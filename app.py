@@ -23,7 +23,7 @@ from scheduler import (
     manual_run_scraper, manual_check_tracked,
     is_scraper_running, get_next_run_times, reschedule_jobs,
 )
-from discord_notifier import send_test_notification
+from discord_notifier import send_test_notification, send_manual_push_notification
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +215,27 @@ async def api_tenders(
             "total": total,
             "page": page,
             "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/tenders/{tender_db_id}/push-discord")
+async def api_push_discord(tender_db_id: int):
+    """手動推送單一案件到 Discord"""
+    db = SessionLocal()
+    try:
+        tender = db.query(Tender).filter_by(id=tender_db_id).first()
+        if not tender:
+            return JSONResponse(
+                {"success": False, "message": "案件不存在"},
+                status_code=404,
+            )
+
+        ok = send_manual_push_notification(tender.to_dict())
+        return {
+            "success": ok,
+            "message": "已推送到 Discord" if ok else "推送失敗，請檢查 Webhook 設定",
         }
     finally:
         db.close()

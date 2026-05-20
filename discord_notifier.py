@@ -239,6 +239,36 @@ def send_error_notification(error_msg: str) -> bool:
         return False
 
 
+def send_manual_push_notification(tender: dict) -> bool:
+    """手動推送單一案件到 Discord（網頁「推送」按鈕）"""
+    webhook_url = config.DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        logger.warning("Discord Webhook URL 未設定，無法推送")
+        return False
+
+    embed = _build_tender_embed(tender)
+    payload = {
+        "content": "📤 **手動推送案件**",
+        "embeds": [embed],
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 204:
+            logger.info(f"手動推送成功：{tender.get('tender_id')}")
+            return True
+        if resp.status_code == 429:
+            retry_after = resp.json().get("retry_after", 5)
+            time.sleep(retry_after)
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            return resp.status_code == 204
+        logger.error(f"手動推送失敗: {resp.status_code} - {resp.text}")
+        return False
+    except requests.RequestException as e:
+        logger.error(f"手動推送異常: {e}")
+        return False
+
+
 def send_tenders_preview(tenders: list[dict]) -> bool:
     """將指定案件列表推送到 Discord（預覽排版用）"""
     if not tenders:

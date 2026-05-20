@@ -78,12 +78,19 @@
                     {{ tender.tender_name }}
                     {% endif %}
                 </h3>
-                <button class="track-btn {{ 'tracked' if tender.is_tracked else '' }}"
-                        onclick="toggleTrack({{ tender.id }}, this)"
-                        title="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}"
-                        aria-label="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}">
-                    {{ '★' if tender.is_tracked else '☆' }}
-                </button>
+                <div class="tender-card-actions">
+                    <button type="button" class="push-discord-btn"
+                            onclick="pushToDiscord({{ tender.id }}, this)"
+                            title="推送到 Discord">
+                        📤 推送
+                    </button>
+                    <button type="button" class="track-btn {{ 'tracked' if tender.is_tracked else '' }}"
+                            onclick="toggleTrack({{ tender.id }}, this)"
+                            title="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}"
+                            aria-label="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}">
+                        {{ '★' if tender.is_tracked else '☆' }}
+                    </button>
+                </div>
             </div>
             <span class="tender-status status-{{ tender.status | replace(' ', '-') }}">{{ tender.status }}</span>
         </div>

@@ -24,6 +24,40 @@ function showToast(message, type = 'info', duration = 4000) {
     }, duration);
 }
 
+// === 手動推送到 Discord ===
+async function pushToDiscord(tenderId, btnElement) {
+    if (btnElement.disabled) return;
+
+    const originalHtml = btnElement.innerHTML;
+    btnElement.disabled = true;
+    btnElement.innerHTML = '⏳ 推送中';
+
+    try {
+        const resp = await fetch(`/api/tenders/${tenderId}/push-discord`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            showToast(data.message || '已推送到 Discord', 'success');
+            btnElement.innerHTML = '✓ 已推送';
+            setTimeout(() => {
+                btnElement.innerHTML = originalHtml;
+                btnElement.disabled = false;
+            }, 2000);
+        } else {
+            showToast(data.message || '推送失敗', 'error');
+            btnElement.innerHTML = originalHtml;
+            btnElement.disabled = false;
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+        btnElement.innerHTML = originalHtml;
+        btnElement.disabled = false;
+    }
+}
+
 // === 追蹤/取消追蹤 ===
 async function toggleTrack(tenderId, btnElement) {
     try {
@@ -111,29 +145,59 @@ function resetScrapeButton() {
 }
 
 // === 爬蟲狀態檢查 ===
+let statusCheckInterval = null;
 let statusCheckCount = 0;
+
+function setScrapeButtonRunning() {
+    const btn = document.getElementById('btnManualScrape');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
+    btn.style.animation = 'none';
+}
+
+/** 頁面載入或切換回來時，與後端執行狀態同步 */
+async function syncScrapeButtonState() {
+    const btn = document.getElementById('btnManualScrape');
+    if (!btn) return;
+
+    try {
+        const resp = await fetch('/api/scrape/status');
+        const data = await resp.json();
+        if (data.is_running) {
+            setScrapeButtonRunning();
+            checkScrapeStatus();
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
 function checkScrapeStatus() {
+    if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+    }
     statusCheckCount = 0;
-    const interval = setInterval(async () => {
+    statusCheckInterval = setInterval(async () => {
         statusCheckCount++;
         try {
             const resp = await fetch('/api/scrape/status');
             const data = await resp.json();
 
             if (!data.is_running) {
-                clearInterval(interval);
+                clearInterval(statusCheckInterval);
+                statusCheckInterval = null;
                 resetScrapeButton();
                 showToast('爬蟲執行完畢！', 'success');
-                // 刷新頁面載入新資料
                 setTimeout(() => location.reload(), 1500);
             }
         } catch (e) {
             // ignore
         }
 
-        // 最多檢查 60 次（5 分鐘）
         if (statusCheckCount >= 60) {
-            clearInterval(interval);
+            clearInterval(statusCheckInterval);
+            statusCheckInterval = null;
             resetScrapeButton();
         }
     }, 5000);
@@ -190,7 +254,7 @@ function initSidebar() {
 document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     updateScheduleInfo();
+    syncScrapeButtonState();
 
-    // 定期更新排程資訊
     setInterval(updateScheduleInfo, 60000);
 });
