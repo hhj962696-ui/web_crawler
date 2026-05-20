@@ -45,56 +45,65 @@ def _get_budget_color(budget_str: str) -> int:
     return COLOR_LOW
 
 
-def _build_tender_embed(tender: dict) -> dict:
-    """建構單一案件的 Embed 物件"""
-    budget_display = tender.get("budget", "未公告") or "未公告"
+def _display(value: str, fallback: str = "—") -> str:
+    """空值顯示占位符"""
+    text = (value or "").strip()
+    return text if text else fallback
+
+
+def _build_tender_description(tender: dict) -> str:
+    """
+    與 CLI list 相同資訊層級，排版供 Discord 閱讀。
+    """
+    contact = _display(tender.get("contact_person"))
+    phone = _display(tender.get("phone"))
+    budget = _display(tender.get("budget"), "未公告")
+    status = _display(tender.get("status"), "公開徵求")
+    org = _display(tender.get("org_name"))
+    tid = _display(tender.get("tender_id"))
+
+    lines = [
+        f"📌 **案號**　`{tid}`",
+        f"🏢 **機關**　{org}",
+        f"👤 **承辦**　{contact}　　📞 **電話**　{phone}",
+        f"💰 **預算**　{budget}　　📊 **狀態**　{status}",
+    ]
+
+    url = (tender.get("tender_url") or "").strip()
+    if url:
+        lines.append(f"\n🔗 [**點此開啟採購網詳情**]({url})")
+
+    return "\n".join(lines)
+
+
+def _build_tender_embed(tender: dict, index: int = None) -> dict:
+    """建構單一案件的 Embed 物件（對齊 CLI 列表格式）"""
+    budget_display = _display(tender.get("budget"), "未公告")
     color = _get_budget_color(budget_display)
+    name = tender.get("tender_name", "未命名案件")[:200]
+    prefix = f"[{index}] " if index is not None else ""
 
     embed = {
-        "title": f"📋 {tender.get('tender_name', '未命名案件')[:200]}",
+        "title": f"{prefix}📋 {name}",
+        "description": _build_tender_description(tender),
         "color": color,
-        "fields": [
-            {
-                "name": "📌 案號",
-                "value": tender.get("tender_id", "N/A"),
-                "inline": True,
-            },
-            {
-                "name": "🏢 招標機關",
-                "value": tender.get("org_name", "N/A") or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "👤 承辦人",
-                "value": tender.get("contact_person", "N/A") or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "📞 電話",
-                "value": tender.get("phone", "N/A") or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "💰 預算金額",
-                "value": budget_display,
-                "inline": True,
-            },
-        ],
     }
 
     scraped_at = tender.get("scraped_at", "")
     if scraped_at:
         embed["timestamp"] = scraped_at
 
-    # 加入連結
-    url = tender.get("tender_url", "")
+    url = (tender.get("tender_url") or "").strip()
     if url:
         embed["url"] = url
 
     return embed
 
 
-def send_new_tenders_notification(tenders: list[dict]) -> bool:
+def send_new_tenders_notification(
+    tenders: list[dict],
+    header_label: str = None,
+) -> bool:
     """
     發送新案件通知到 Discord
     每則訊息最多 5 個 Embed，超過則拆分
@@ -112,14 +121,21 @@ def send_new_tenders_notification(tenders: list[dict]) -> bool:
     batch_size = config.DISCORD_EMBED_BATCH_SIZE
     success = True
 
+    total_pages = (total - 1) // batch_size + 1
+
     for i in range(0, total, batch_size):
         batch = tenders[i:i + batch_size]
-        embeds = [_build_tender_embed(t) for t in batch]
+        embeds = [
+            _build_tender_embed(t, index=i + j + 1)
+            for j, t in enumerate(batch)
+        ]
 
-        page_info = f"（{i // batch_size + 1}/{(total - 1) // batch_size + 1}）" if total > batch_size else ""
+        page_num = i // batch_size + 1
+        page_info = f"第 {page_num}/{total_pages} 則" if total_pages > 1 else ""
 
+        label = header_label or f"🆕 **公開徵求新案通知**　共 **{total}** 筆　{page_info}"
         payload = {
-            "content": f"🆕 **公開徵求新案通知** — 共 {total} 筆 {page_info}",
+            "content": f"{label}\n━━━━━━━━━━━━━━━━━━━━",
             "embeds": embeds,
         }
 
@@ -153,40 +169,19 @@ def send_status_change_notification(tender: dict, old_status: str, new_status: s
     if not webhook_url:
         return False
 
+    body = _build_tender_description(tender)
+    status_block = (
+        f"\n\n⬅️ **原狀態**　{_display(old_status)}\n"
+        f"➡️ **新狀態**　{_display(new_status)}"
+    )
+
     embed = {
-        "title": f"🔄 追蹤案件狀態變更",
+        "title": f"🔄 追蹤案件狀態變更 — {tender.get('tender_name', '未命名')[:150]}",
         "color": COLOR_STATUS,
-        "description": f"**{tender.get('tender_name', '未命名')[:200]}**",
-        "fields": [
-            {
-                "name": "📌 案號",
-                "value": tender.get("tender_id", "N/A"),
-                "inline": True,
-            },
-            {
-                "name": "⬅️ 舊狀態",
-                "value": old_status or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "➡️ 新狀態",
-                "value": new_status or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "🏢 招標機關",
-                "value": tender.get("org_name", "N/A") or "N/A",
-                "inline": True,
-            },
-            {
-                "name": "💰 預算金額",
-                "value": tender.get("budget", "未公告") or "未公告",
-                "inline": True,
-            },
-        ],
+        "description": body + status_block,
     }
 
-    url = tender.get("tender_url", "")
+    url = (tender.get("tender_url") or "").strip()
     if url:
         embed["url"] = url
 
@@ -239,33 +234,57 @@ def send_error_notification(error_msg: str) -> bool:
         return False
 
 
+def send_tenders_preview(tenders: list[dict]) -> bool:
+    """將指定案件列表推送到 Discord（預覽排版用）"""
+    if not tenders:
+        logger.warning("預覽通知：無案件資料")
+        return False
+    total = len(tenders)
+    return send_new_tenders_notification(
+        tenders,
+        header_label=f"👀 **通知格式預覽**　共 **{total}** 筆（資料庫最近案件）",
+    )
+
+
 def send_test_notification() -> bool:
     """發送測試通知（用於驗證 Webhook 設定）"""
     webhook_url = config.DISCORD_WEBHOOK_URL
     if not webhook_url:
         return False
 
-    embed = {
-        "title": "✅ Webhook 測試成功",
+    # 若有資料庫案件，附一則真實格式範例
+    sample_embed = None
+    try:
+        from models import SessionLocal, Tender
+        from sqlalchemy import desc
+
+        db = SessionLocal()
+        try:
+            row = db.query(Tender).order_by(desc(Tender.created_at)).first()
+            if row:
+                sample_embed = _build_tender_embed(row.to_dict(), index=1)
+                sample_embed["footer"] = {"text": "↑ 真實案件格式預覽（最新一筆）"}
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    info_embed = {
+        "title": "✅ Webhook 連線測試成功",
         "color": COLOR_INFO,
-        "description": "政府採購爬蟲系統 Discord 通知功能正常運作！",
-        "fields": [
-            {
-                "name": "⏰ 測試時間",
-                "value": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "inline": True,
-            },
-            {
-                "name": "🔑 篩選關鍵字",
-                "value": ", ".join(config.FILTER_KEYWORDS) or "未設定",
-                "inline": False,
-            },
-        ],
+        "description": (
+            f"⏰ **測試時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"🔑 **篩選關鍵字**　{', '.join(config.FILTER_KEYWORDS) or '未設定'}"
+        ),
     }
+
+    embeds = [info_embed]
+    if sample_embed:
+        embeds.append(sample_embed)
 
     payload = {
         "content": "🧪 **系統測試通知**",
-        "embeds": [embed],
+        "embeds": embeds,
     }
 
     try:

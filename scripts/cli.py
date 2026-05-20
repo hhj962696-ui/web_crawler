@@ -99,6 +99,35 @@ def cmd_check_network(_args):
     return 0
 
 
+def cmd_notify_preview(args):
+    from models import SessionLocal, Tender
+    from sqlalchemy import desc
+    from discord_notifier import send_tenders_preview
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Tender)
+            .order_by(desc(Tender.created_at))
+            .limit(args.limit)
+            .all()
+        )
+        if not rows:
+            print("資料庫無案件，請先執行 scrape")
+            return 1
+        tenders = [r.to_dict() for r in rows]
+    finally:
+        db.close()
+
+    print(f"正在發送 {len(tenders)} 筆預覽通知到 Discord...")
+    ok = send_tenders_preview(tenders)
+    if ok:
+        print("已發送！請到 Discord 查看排版，滿意後新案會自動使用相同格式。")
+        return 0
+    print("發送失敗，請檢查 Webhook")
+    return 1
+
+
 def cmd_test_discord(_args):
     from discord_notifier import send_test_notification
 
@@ -134,6 +163,19 @@ def cmd_scrape(args):
     print("\n=== 爬蟲結果 ===")
     for k, v in result.items():
         print(f"  {k}: {v}")
+    return 0 if result.get("success") else 1
+
+
+def cmd_enrich(_args):
+    from scraper import enrich_missing_contacts
+
+    print("補抓承辦人/電話（需已存有詳情頁連結）...")
+    result = enrich_missing_contacts()
+    print("\n=== 補抓結果 ===")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    if result.get("no_url"):
+        print("\n提示：若 no_url > 0，請先執行 python scripts/cli.py scrape 更新連結後再 enrich")
     return 0 if result.get("success") else 1
 
 
@@ -238,6 +280,10 @@ def main():
     sub.add_parser("status", help="顯示設定與資料庫摘要").set_defaults(func=cmd_status)
     sub.add_parser("test-discord", help="發送 Discord 測試通知").set_defaults(func=cmd_test_discord)
 
+    p_preview = sub.add_parser("notify-preview", help="將資料庫最近案件推送到 DC 預覽排版")
+    p_preview.add_argument("--limit", type=int, default=5)
+    p_preview.set_defaults(func=cmd_notify_preview)
+
     sub.add_parser("check-network", help="檢測能否連上政府採購網").set_defaults(
         func=cmd_check_network
     )
@@ -247,6 +293,7 @@ def main():
     p_scrape.add_argument("--force", action="store_true", help="略過連線預檢")
     p_scrape.set_defaults(func=cmd_scrape)
 
+    sub.add_parser("enrich", help="補抓既有案件的承辦人/電話").set_defaults(func=cmd_enrich)
     sub.add_parser("check-tracked", help="檢查追蹤案件狀態").set_defaults(func=cmd_check_tracked)
 
     p_list = sub.add_parser("list", help="列出資料庫案件")

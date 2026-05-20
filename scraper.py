@@ -41,11 +41,14 @@ TRACKED_STATUS_KEYWORDS = (
 )
 
 DETAIL_FIELD_LABELS = {
-    "contact_person": ("承辦人", "聯絡人", "聯絡窗口"),
-    "phone": ("電話", "聯絡電話", "分機"),
-    "budget": ("預算金額", "預算", "採購金額", "契約金額"),
+    "tender_name": ("標案名稱",),
+    "contact_person": ("承辦人", "聯絡人", "聯絡窗口", "採購人"),
+    "phone": ("電話", "聯絡電話", "聯絡電話號碼", "分機"),
+    "budget": ("預算金額", "預算", "採購金額", "契約金額", "公告金額"),
     "org_name": ("招標機關", "機關名稱", "採購機關"),
 }
+
+DETAIL_URL_MARKERS = ("urlSelector/common/tpAppeal", "readTpAppeal")
 
 
 def _create_driver() -> webdriver.Chrome:
@@ -162,8 +165,17 @@ def _label_matches(label: str, keywords: tuple[str, ...]) -> bool:
     return any(kw in label for kw in keywords)
 
 
+def _assign_detail_field(parsed: dict[str, str], field: str, value: str):
+    """寫入詳情欄位（保留較長/較完整的值）"""
+    value = (value or "").strip()
+    if not value or value in ("-", "無", "N/A"):
+        return
+    if field not in parsed or len(value) > len(parsed.get(field, "")):
+        parsed[field] = value
+
+
 def _parse_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
-    """從詳情頁表格 th/td 配對解析欄位"""
+    """從詳情頁表格 label/value 配對解析欄位（支援 td+td、th+td）"""
     parsed: dict[str, str] = {}
 
     for table in soup.find_all("table"):
@@ -171,16 +183,64 @@ def _parse_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
             cells = row.find_all(["th", "td"])
             if len(cells) < 2:
                 continue
-            label = cells[0].get_text(strip=True)
-            value = cells[-1].get_text(strip=True)
-            if not label or not value:
+
+            # 標準兩欄列：標籤 | 值
+            if len(cells) == 2:
+                label = cells[0].get_text(strip=True)
+                value = cells[1].get_text(strip=True)
+                for field, labels in DETAIL_FIELD_LABELS.items():
+                    if _label_matches(label, labels):
+                        _assign_detail_field(parsed, field, value)
                 continue
 
-            for field, labels in DETAIL_FIELD_LABELS.items():
-                if _label_matches(label, labels):
-                    parsed[field] = value
+            # 多欄橫向排列：標籤, 值, 標籤, 值, ...
+            i = 0
+            while i < len(cells) - 1:
+                label = cells[i].get_text(strip=True)
+                value = cells[i + 1].get_text(strip=True)
+                matched = False
+                for field, labels in DETAIL_FIELD_LABELS.items():
+                    if _label_matches(label, labels):
+                        _assign_detail_field(parsed, field, value)
+                        matched = True
+                        break
+                i += 2 if matched else 1
+
+    # 備援：從全文找電話格式
+    if "phone" not in parsed:
+        page_text = soup.get_text(" ", strip=True)
+        phone_match = re.search(
+            r"(?:\(0\d{1,2}\)|0\d{1,2}[-－])?\d{6,8}(?:#\d+)?",
+            page_text,
+        )
+        if phone_match:
+            parsed["phone"] = phone_match.group(0)
 
     return parsed
+
+
+def _normalize_detail_url(href: str) -> str:
+    """轉成完整詳情頁 URL"""
+    if not href:
+        return ""
+    href = href.strip()
+    if href.startswith("http"):
+        return href
+    if href.startswith("/"):
+        return f"{config.PCC_BASE_URL}{href}"
+    return f"{config.PCC_BASE_URL}/{href.lstrip('/')}"
+
+
+def _extract_detail_url_from_row(row) -> str:
+    """從列表列的「檢視」等連結取得公開徵求詳情 URL"""
+    for link in row.find_all("a", href=True):
+        href = link.get("href", "")
+        if any(marker in href for marker in DETAIL_URL_MARKERS):
+            return _normalize_detail_url(href)
+        title = (link.get("title") or "") + (link.get_text(strip=True) or "")
+        if "檢視" in title or "view" in title.lower():
+            return _normalize_detail_url(href)
+    return ""
 
 
 def _extract_status_from_soup(soup: BeautifulSoup) -> str:
@@ -222,13 +282,18 @@ def _enrich_tender_from_detail(driver: webdriver.Chrome, tender: dict) -> dict:
         page_source = _load_detail_page(driver, url)
         detail = _parse_detail_page(page_source)
 
-        for field in ("contact_person", "phone", "budget", "org_name", "status"):
+        for field in ("tender_name", "contact_person", "phone", "budget", "org_name", "status"):
             value = detail.get(field, "").strip()
             if value and not tender.get(field, "").strip():
                 tender[field] = value
 
         if not tender.get("status"):
             tender["status"] = detail.get("status") or "公開徵求"
+
+        logger.debug(
+            f"詳情補抓 [{tender.get('tender_id')}]: "
+            f"聯絡={tender.get('contact_person')}, 電話={tender.get('phone')}"
+        )
 
     except Exception as e:
         logger.warning(f"詳情頁補抓失敗 [{tender.get('tender_id')}]: {e}")
@@ -266,11 +331,11 @@ def _parse_table_rows(page_source: str) -> list[dict]:
     col_map = {}
     for i, h in enumerate(headers):
         h_clean = h.strip()
-        if "案號" in h_clean:
+        if "標案案號" in h_clean or h_clean == "案號" or "案號" in h_clean:
             col_map["tender_id"] = i
-        elif "案名" in h_clean or "標案名稱" in h_clean:
+        elif "標案名稱" in h_clean or "案名" in h_clean:
             col_map["tender_name"] = i
-        elif "機關" in h_clean:
+        elif "機關名稱" in h_clean or ("機關" in h_clean and "代碼" not in h_clean):
             col_map["org_name"] = i
         elif "承辦人" in h_clean or "聯絡人" in h_clean:
             col_map["contact_person"] = i
@@ -300,14 +365,10 @@ def _parse_table_rows(page_source: str) -> list[dict]:
                 cell = cells[idx]
                 tender[field] = cell.get_text(strip=True)
 
-                # 擷取連結
-                if field in ("tender_name", "tender_id"):
-                    link = cell.find("a")
-                    if link and link.get("href"):
-                        href = link["href"]
-                        if not href.startswith("http"):
-                            href = config.PCC_BASE_URL + href
-                        tender["tender_url"] = href
+        # 詳情頁連結在「檢視」欄（urlSelector/common/tpAppeal?pk=...）
+        detail_url = _extract_detail_url_from_row(row)
+        if detail_url:
+            tender["tender_url"] = detail_url
 
         # 如果表格結構不符預期，嘗試按位置解析
         if not tender["tender_id"] and not col_map:
@@ -508,6 +569,19 @@ def run_scraper(
                     if new_val and new_val != getattr(existing, field, ""):
                         setattr(existing, field, new_val)
                         changed = True
+                # 既有案缺聯絡資料時，用詳情頁補抓
+                if _needs_detail_enrichment(existing.to_dict()):
+                    enrich_data = existing.to_dict()
+                    enrich_data["tender_url"] = (
+                        tender_data.get("tender_url") or existing.tender_url or ""
+                    )
+                    if enrich_data["tender_url"]:
+                        _enrich_tender_from_detail(driver, enrich_data)
+                        for field in ["tender_name", "contact_person", "phone", "budget", "org_name"]:
+                            val = enrich_data.get(field, "").strip()
+                            if val and val != getattr(existing, field, ""):
+                                setattr(existing, field, val)
+                                changed = True
                 if changed:
                     existing.updated_at = datetime.now()
                     updated_tenders += 1
@@ -577,6 +651,84 @@ def run_scraper(
 
         # Discord 錯誤通知
         send_error_notification(f"爬蟲類型: {scrape_type}\n錯誤: {error_msg}")
+
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        db.close()
+
+    return result
+
+
+def enrich_missing_contacts(limit: int = None) -> dict:
+    """
+    為資料庫中缺少承辦人/電話的既有案件補抓詳情頁。
+    需已有 tender_url（請先重新 scrape 以更新連結）。
+    """
+    db = SessionLocal()
+    driver = None
+    result = {
+        "success": False,
+        "enriched": 0,
+        "skipped": 0,
+        "failed": 0,
+        "no_url": 0,
+        "error": "",
+    }
+
+    try:
+        tenders = db.query(Tender).all()
+        targets = [t for t in tenders if _needs_detail_enrichment(t.to_dict())]
+        if limit:
+            targets = targets[:limit]
+
+        if not targets:
+            logger.info("沒有需要補抓聯絡資料的案件")
+            result["success"] = True
+            return result
+
+        logger.info(f"開始補抓 {len(targets)} 筆案件聯絡資料...")
+        driver = _create_driver()
+
+        for tender in targets:
+            if not tender.tender_url:
+                result["no_url"] += 1
+                continue
+            data = tender.to_dict()
+            try:
+                _enrich_tender_from_detail(driver, data)
+                changed = False
+                for field in ["tender_name", "contact_person", "phone", "budget", "org_name"]:
+                    val = data.get(field, "").strip()
+                    if val and getattr(tender, field, "") != val:
+                        setattr(tender, field, val)
+                        changed = True
+                if changed:
+                    tender.updated_at = datetime.now()
+                    result["enriched"] += 1
+                    logger.info(
+                        f"已補抓 {tender.tender_id}: "
+                        f"{tender.contact_person} / {tender.phone}"
+                    )
+                else:
+                    result["skipped"] += 1
+            except Exception as e:
+                result["failed"] += 1
+                logger.warning(f"補抓失敗 [{tender.tender_id}]: {e}")
+
+        db.commit()
+        result["success"] = True
+        logger.info(
+            f"補抓完成 — 成功 {result['enriched']}, "
+            f"略過 {result['skipped']}, 無連結 {result['no_url']}, 失敗 {result['failed']}"
+        )
+
+    except Exception as e:
+        result["error"] = str(e)
+        logger.error(f"補抓聯絡資料失敗: {e}", exc_info=True)
 
     finally:
         if driver:
