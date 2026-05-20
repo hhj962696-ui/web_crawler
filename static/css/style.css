@@ -288,6 +288,34 @@ a:hover {
     gap: 16px;
 }
 
+.scrape-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.proc-category-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.proc-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.proc-checkbox input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent-primary);
+}
+
 .mobile-toggle {
     display: none;
     background: none;
@@ -673,6 +701,12 @@ a:hover {
     background: rgba(59, 130, 246, 0.15);
     color: #60a5fa;
     border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.status-公開招標 {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
 .status-已決標 {

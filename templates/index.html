@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}全部案件 — 採購爬蟲系統{% endblock %}
-{% block page_title %}全部案件{% endblock %}
+{% block title %}公開徵求 — 採購爬蟲系統{% endblock %}
+{% block page_title %}公開徵求{% endblock %}
 
 {% block content %}
 <!-- 統計卡片 -->
@@ -46,6 +46,7 @@
         <select id="filterStatus" class="filter-select" onchange="loadTenders()">
             <option value="">全部狀態</option>
             <option value="公開徵求">公開徵求</option>
+            <option value="公開招標">公開招標</option>
             <option value="已決標">已決標</option>
             <option value="已截止">已截止</option>
             <option value="廢標">廢標</option>
@@ -127,7 +128,7 @@
     <div class="empty-state">
         <div class="empty-icon">📭</div>
         <h3>尚無案件資料</h3>
-        <p>點擊右上角「手動執行爬蟲」按鈕開始擷取資料</p>
+        <p>點擊右上角「手動徵求爬蟲」按鈕開始擷取資料</p>
     </div>
     {% endif %}
 </div>

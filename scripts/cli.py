@@ -53,9 +53,17 @@ def cmd_status(_args):
         print(f"追蹤中     : {tracked}")
         print(f"關鍵字     : {', '.join(config.FILTER_KEYWORDS) or '(未設定，全抓)'}")
         print(f"回溯天數   : {config.SCRAPE_LOOKBACK_DAYS}")
-        print(f"排程爬蟲   : {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d}")
+        from models import BiddingTender
+        bidding_total = db.query(func.count(BiddingTender.id)).scalar() or 0
+
+        print(f"排程徵求   : {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d}")
+        print(f"排程招標   : {config.BIDDING_SCHEDULE_HOUR:02d}:{config.BIDDING_SCHEDULE_MINUTE:02d}")
+        print(f"招標回溯   : {config.BIDDING_LOOKBACK_DAYS} 天")
+        print(f"招標性質   : {','.join(config.BIDDING_PROC_CATEGORIES) or '(不限)'}")
+        print(f"招標案件   : {bidding_total}")
         print(f"追蹤檢查   : {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}")
-        print(f"Discord    : {'已設定' if config.DISCORD_WEBHOOK_URL else '未設定'}")
+        print(f"Discord徵求: {'已設定' if config.DISCORD_WEBHOOK_URL else '未設定'}")
+        print(f"Discord招標: {'已設定' if config.BIDDING_DISCORD_WEBHOOK_URL else '未設定'}")
         print(f"Chrome     : {'無頭模式' if config.CHROME_HEADLESS else '顯示視窗'}")
 
         if last:
@@ -138,6 +146,60 @@ def cmd_test_discord(_args):
         return 0
     print("失敗。請檢查 .env 的 DISCORD_WEBHOOK_URL")
     return 1
+
+
+def cmd_scrape_bidding(args):
+    from bidding_scraper import run_bidding_scraper
+    from network_check import check_pcc_network
+
+    if not args.force:
+        print("先檢測政府採購網連線...")
+        net = check_pcc_network(timeout=25)
+        if not net["ok"]:
+            print(f"失敗: {net['message']}")
+            return 1
+        print(f"通過: {net['message']}\n")
+
+    print("開始公開招標爬蟲（需 1～5 分鐘）...")
+    result = run_bidding_scraper(
+        scrape_type="bidding_manual",
+        use_filter=not args.no_filter,
+    )
+    print("\n=== 公開招標爬蟲結果 ===")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    return 0 if result.get("success") else 1
+
+
+def cmd_list_bidding(args):
+    from models import BiddingTender
+    from sqlalchemy import desc
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(BiddingTender)
+            .order_by(desc(BiddingTender.created_at))
+            .limit(args.limit)
+            .all()
+        )
+        if not rows:
+            print("尚無公開招標案件。請執行: python scripts/cli.py scrape-bidding")
+            return 0
+        print(f"=== 最近 {len(rows)} 筆公開招標 ===\n")
+        for i, t in enumerate(rows, 1):
+            d = t.to_dict()
+            print(f"[{i}] {d['tender_name'][:60]}")
+            print(f"    案號: {d['tender_id']}  性質: {d['proctrg_cate'] or 'N/A'}")
+            print(f"    機關: {d['org_name'] or 'N/A'}")
+            print(f"    預算: {d['budget'] or '未公告'}  截止: {d['bid_deadline'] or 'N/A'}")
+            print(f"    建立: {d['created_at']}")
+            if d["tender_url"]:
+                print(f"    連結: {d['tender_url']}")
+            print()
+    finally:
+        db.close()
+    return 0
 
 
 def cmd_scrape(args):
@@ -288,17 +350,26 @@ def main():
         func=cmd_check_network
     )
 
-    p_scrape = sub.add_parser("scrape", help="執行一次爬蟲")
+    p_scrape = sub.add_parser("scrape", help="執行一次公開徵求爬蟲")
     p_scrape.add_argument("--no-filter", action="store_true", help="略過關鍵字篩選（除錯用）")
     p_scrape.add_argument("--force", action="store_true", help="略過連線預檢")
     p_scrape.set_defaults(func=cmd_scrape)
 
+    p_bid = sub.add_parser("scrape-bidding", help="執行一次公開招標爬蟲")
+    p_bid.add_argument("--no-filter", action="store_true", help="略過關鍵字篩選")
+    p_bid.add_argument("--force", action="store_true", help="略過連線預檢")
+    p_bid.set_defaults(func=cmd_scrape_bidding)
+
     sub.add_parser("enrich", help="補抓既有案件的承辦人/電話").set_defaults(func=cmd_enrich)
     sub.add_parser("check-tracked", help="檢查追蹤案件狀態").set_defaults(func=cmd_check_tracked)
 
-    p_list = sub.add_parser("list", help="列出資料庫案件")
+    p_list = sub.add_parser("list", help="列出公開徵求案件")
     p_list.add_argument("--limit", type=int, default=10)
     p_list.set_defaults(func=cmd_list)
+
+    p_list_b = sub.add_parser("list-bidding", help="列出公開招標案件")
+    p_list_b.add_argument("--limit", type=int, default=10)
+    p_list_b.set_defaults(func=cmd_list_bidding)
 
     p_exp = sub.add_parser("export", help="匯出 CSV")
     p_exp.add_argument("-o", "--output", default="tenders_export.csv")

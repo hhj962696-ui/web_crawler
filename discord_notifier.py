@@ -58,7 +58,8 @@ def _build_tender_description(tender: dict) -> str:
     contact = _display(tender.get("contact_person"))
     phone = _display(tender.get("phone"))
     budget = _display(tender.get("budget"), "未公告")
-    status = _display(tender.get("status"), "公開徵求")
+    default_status = "公開招標" if tender.get("proctrg_cate") or tender.get("bid_deadline") else "公開徵求"
+    status = _display(tender.get("status"), default_status)
     org = _display(tender.get("org_name"))
     tid = _display(tender.get("tender_id"))
 
@@ -71,6 +72,10 @@ def _build_tender_description(tender: dict) -> str:
         f"👤 **承辦**　{contact}　　📞 **電話**　{phone}",
         f"💰 **預算**　{budget}　　📊 **狀態**　{status}",
     ]
+    if tender.get("proctrg_cate"):
+        lines.append(f"📂 **採購性質**　{tender['proctrg_cate']}")
+    if tender.get("bid_deadline"):
+        lines.append(f"⏰ **截止投標**　{tender['bid_deadline']}")
     if time_line:
         lines.append(time_line)
 
@@ -105,6 +110,65 @@ def _build_tender_embed(tender: dict, index: int = None) -> dict:
     return embed
 
 
+def _post_webhook_payload(webhook_url: str, payload: dict) -> bool:
+    """發送 payload 到指定 Webhook"""
+    if not webhook_url:
+        return False
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 204:
+            return True
+        if resp.status_code == 429:
+            retry_after = resp.json().get("retry_after", 5)
+            time.sleep(retry_after)
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            return resp.status_code == 204
+        logger.error(f"Discord 通知失敗: {resp.status_code} - {resp.text}")
+        return False
+    except requests.RequestException as e:
+        logger.error(f"Discord 通知發送異常: {e}")
+        return False
+
+
+def _send_embed_batches(
+    webhook_url: str,
+    tenders: list[dict],
+    header_template: str,
+    embed_title_prefix: str = "📋",
+) -> bool:
+    """分批發送 Embed 通知"""
+    if not webhook_url or not tenders:
+        return False
+
+    total = len(tenders)
+    batch_size = config.DISCORD_EMBED_BATCH_SIZE
+    success = True
+    total_pages = (total - 1) // batch_size + 1
+
+    for i in range(0, total, batch_size):
+        batch = tenders[i:i + batch_size]
+        embeds = []
+        for j, t in enumerate(batch):
+            embed = _build_tender_embed(t, index=i + j + 1)
+            embed["title"] = embed["title"].replace("📋", embed_title_prefix, 1)
+            embeds.append(embed)
+
+        page_num = i // batch_size + 1
+        page_info = f"第 {page_num}/{total_pages} 則" if total_pages > 1 else ""
+        label = header_template.format(total=total, page_info=page_info)
+
+        payload = {
+            "content": f"{label}\n━━━━━━━━━━━━━━━━━━━━",
+            "embeds": embeds,
+        }
+        if not _post_webhook_payload(webhook_url, payload):
+            success = False
+        if i + batch_size < total:
+            time.sleep(1.5)
+
+    return success
+
+
 def send_new_tenders_notification(
     tenders: list[dict],
     header_label: str = None,
@@ -122,50 +186,67 @@ def send_new_tenders_notification(
         logger.info("沒有新案件需要通知")
         return True
 
-    total = len(tenders)
-    batch_size = config.DISCORD_EMBED_BATCH_SIZE
-    success = True
+    label = header_label or "🆕 **公開徵求新案通知**　共 **{total}** 筆　{page_info}"
+    return _send_embed_batches(webhook_url, tenders, label, embed_title_prefix="📋")
 
-    total_pages = (total - 1) // batch_size + 1
 
-    for i in range(0, total, batch_size):
-        batch = tenders[i:i + batch_size]
-        embeds = [
-            _build_tender_embed(t, index=i + j + 1)
-            for j, t in enumerate(batch)
-        ]
+def send_new_bidding_notification(tenders: list[dict]) -> bool:
+    """發送公開招標新案通知（使用招標專用 Webhook）"""
+    webhook_url = config.BIDDING_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        logger.warning("公開招標 Discord Webhook 未設定，跳過通知")
+        return False
+    if not tenders:
+        return True
 
-        page_num = i // batch_size + 1
-        page_info = f"第 {page_num}/{total_pages} 則" if total_pages > 1 else ""
+    label = "🆕 **公開招標新案通知**　共 **{total}** 筆　{page_info}"
+    ok = _send_embed_batches(webhook_url, tenders, label, embed_title_prefix="📢")
+    if ok:
+        logger.info(f"公開招標 Discord 通知已發送 {len(tenders)} 筆")
+    return ok
 
-        label = header_label or f"🆕 **公開徵求新案通知**　共 **{total}** 筆　{page_info}"
-        payload = {
-            "content": f"{label}\n━━━━━━━━━━━━━━━━━━━━",
-            "embeds": embeds,
-        }
 
-        try:
-            resp = requests.post(webhook_url, json=payload, timeout=10)
-            if resp.status_code == 204:
-                logger.info(f"Discord 通知已發送：第 {i + 1}~{min(i + batch_size, total)} 筆")
-            elif resp.status_code == 429:
-                # Rate limited
-                retry_after = resp.json().get("retry_after", 5)
-                logger.warning(f"Discord rate limited，等待 {retry_after} 秒後重試")
-                time.sleep(retry_after)
-                resp = requests.post(webhook_url, json=payload, timeout=10)
-            else:
-                logger.error(f"Discord 通知失敗: {resp.status_code} - {resp.text}")
-                success = False
-        except requests.RequestException as e:
-            logger.error(f"Discord 通知發送異常: {e}")
-            success = False
+def send_manual_push_bidding_notification(tender: dict) -> bool:
+    """手動推送公開招標案件"""
+    webhook_url = config.BIDDING_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        logger.warning("公開招標 Discord Webhook 未設定，無法推送")
+        return False
 
-        # 批次之間延遲，避免觸發 rate limit
-        if i + batch_size < total:
-            time.sleep(1.5)
+    embed = _build_tender_embed(tender)
+    embed["title"] = embed["title"].replace("📋", "📢", 1)
+    desc = embed.get("description", "")
+    if tender.get("proctrg_cate") or tender.get("bid_deadline"):
+        extra = []
+        if tender.get("proctrg_cate"):
+            extra.append(f"📂 **採購性質**　{tender['proctrg_cate']}")
+        if tender.get("bid_deadline"):
+            extra.append(f"⏰ **截止投標**　{tender['bid_deadline']}")
+        embed["description"] = desc + "\n" + "\n".join(extra)
 
-    return success
+    payload = {
+        "content": "📤 **手動推送案件（公開招標）**",
+        "embeds": [embed],
+    }
+    return _post_webhook_payload(webhook_url, payload)
+
+
+def send_bidding_error_notification(error_msg: str) -> bool:
+    """公開招標爬蟲錯誤通知"""
+    webhook_url = config.BIDDING_DISCORD_WEBHOOK_URL or config.DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        return False
+
+    embed = {
+        "title": "❌ 公開招標爬蟲執行錯誤",
+        "color": COLOR_ERROR,
+        "description": f"```\n{error_msg[:1500]}\n```",
+    }
+    payload = {
+        "content": "⚠️ **公開招標爬蟲異常通知**",
+        "embeds": [embed],
+    }
+    return _post_webhook_payload(webhook_url, payload)
 
 
 def send_status_change_notification(tender: dict, old_status: str, new_status: str) -> bool:

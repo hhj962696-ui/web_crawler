@@ -124,7 +124,7 @@ async function manualScrape() {
         if (data.started) {
             showToast(data.message, 'success');
             // 定期檢查狀態
-            checkScrapeStatus();
+            checkScrapeStatus('appeal');
         } else {
             showToast(data.message, 'warning');
             resetScrapeButton();
@@ -139,8 +139,40 @@ function resetScrapeButton() {
     const btn = document.getElementById('btnManualScrape');
     if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<span class="btn-icon">🚀</span><span>手動執行爬蟲</span>';
+        btn.innerHTML = '<span class="btn-icon">🚀</span><span>手動徵求爬蟲</span>';
         btn.style.animation = '';
+    }
+}
+
+function resetBiddingScrapeButton() {
+    const btn = document.getElementById('btnManualBiddingScrape');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">📢</span><span>手動招標爬蟲</span>';
+        btn.style.animation = '';
+    }
+}
+
+async function manualBiddingScrape() {
+    const btn = document.getElementById('btnManualBiddingScrape');
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
+
+    try {
+        const resp = await fetch('/api/scrape/run-bidding', { method: 'POST' });
+        const data = await resp.json();
+        if (data.started) {
+            showToast(data.message, 'success');
+            checkScrapeStatus('bidding');
+        } else {
+            showToast(data.message, 'warning');
+            resetBiddingScrapeButton();
+        }
+    } catch (e) {
+        showToast('請求失敗', 'error');
+        resetBiddingScrapeButton();
     }
 }
 
@@ -156,24 +188,36 @@ function setScrapeButtonRunning() {
     btn.style.animation = 'none';
 }
 
+function setBiddingScrapeButtonRunning() {
+    const btn = document.getElementById('btnManualBiddingScrape');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
+}
+
 /** 頁面載入或切換回來時，與後端執行狀態同步 */
 async function syncScrapeButtonState() {
-    const btn = document.getElementById('btnManualScrape');
-    if (!btn) return;
-
     try {
         const resp = await fetch('/api/scrape/status');
         const data = await resp.json();
-        if (data.is_running) {
+        if (!data.is_running) return;
+        if (data.mode === 'bidding') {
+            setBiddingScrapeButtonRunning();
+            checkScrapeStatus('bidding');
+        } else if (data.mode === 'appeal') {
             setScrapeButtonRunning();
-            checkScrapeStatus();
+            checkScrapeStatus('appeal');
+        } else {
+            setScrapeButtonRunning();
+            setBiddingScrapeButtonRunning();
+            checkScrapeStatus('any');
         }
     } catch (e) {
         // ignore
     }
 }
 
-function checkScrapeStatus() {
+function checkScrapeStatus(kind) {
     if (statusCheckInterval) {
         clearInterval(statusCheckInterval);
     }
@@ -188,7 +232,9 @@ function checkScrapeStatus() {
                 clearInterval(statusCheckInterval);
                 statusCheckInterval = null;
                 resetScrapeButton();
-                showToast('爬蟲執行完畢！', 'success');
+                resetBiddingScrapeButton();
+                const label = kind === 'bidding' ? '公開招標爬蟲' : '爬蟲';
+                showToast(`${label}執行完畢！`, 'success');
                 setTimeout(() => location.reload(), 1500);
             }
         } catch (e) {
@@ -199,6 +245,7 @@ function checkScrapeStatus() {
             clearInterval(statusCheckInterval);
             statusCheckInterval = null;
             resetScrapeButton();
+            resetBiddingScrapeButton();
         }
     }, 5000);
 }

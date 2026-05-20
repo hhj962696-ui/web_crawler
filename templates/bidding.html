@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}公開招標 — 採購爬蟲系統{% endblock %}
+{% block page_title %}公開招標{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">📢</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.total }}</span>
+            <span class="stat-label">招標案件總數</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🆕</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ stats.today }}</span>
+            <span class="stat-label">今日新增</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🕐</div>
+        <div class="stat-info">
+            <span class="stat-value stat-time">{{ stats.last_scrape or '--' }}</span>
+            <span class="stat-label">上次招標爬蟲</span>
+        </div>
+    </div>
+</div>
+
+<div class="filter-bar glass-card">
+    <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜尋案名、案號、機關..." class="search-input" autocomplete="off">
+    </div>
+    <div class="filter-group">
+        <a href="/api/export/bidding-csv" class="btn btn-secondary btn-small">📥 匯出 CSV</a>
+    </div>
+</div>
+
+<div class="tender-list" id="tenderList">
+    {% for tender in tenders %}
+    <div class="tender-card glass-card" data-name="{{ tender.tender_name }}" data-tender-id="{{ tender.tender_id }}" data-org="{{ tender.org_name }}">
+        <div class="tender-header">
+            <div class="tender-title-row">
+                <h3 class="tender-name">
+                    {% if tender.tender_url %}
+                    <a href="{{ tender.tender_url }}" target="_blank" rel="noopener noreferrer">{{ tender.tender_name }}</a>
+                    {% else %}
+                    {{ tender.tender_name }}
+                    {% endif %}
+                </h3>
+                <div class="tender-card-actions">
+                    <button type="button" class="push-discord-btn"
+                            onclick="pushBiddingToDiscord({{ tender.id }}, this)"
+                            title="推送到公開招標 Discord">
+                        📤 推送
+                    </button>
+                </div>
+            </div>
+            <span class="tender-status status-公開招標">{{ tender.status }}</span>
+        </div>
+        <div class="tender-details">
+            <div class="detail-item">
+                <span class="detail-label">📌 案號</span>
+                <span class="detail-value">{{ tender.tender_id }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🏢 機關</span>
+                <span class="detail-value">{{ tender.org_name or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">📂 採購性質</span>
+                <span class="detail-value">{{ tender.proctrg_cate or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">⏰ 截止投標</span>
+                <span class="detail-value">{{ tender.bid_deadline or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">👤 承辦人</span>
+                <span class="detail-value">{{ tender.contact_person or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">📞 電話</span>
+                <span class="detail-value">{{ tender.phone or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">💰 預算</span>
+                <span class="detail-value budget">{{ tender.budget or '未公告' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🕐 爬取時間</span>
+                <span class="detail-value">{{ tender.scraped_at }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not tenders %}
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>尚無公開招標資料</h3>
+        <p>點擊右上角「手動執行招標爬蟲」開始擷取近 3 天公告</p>
+    </div>
+    {% endif %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/bidding?page={{ page - 1 }}" class="page-btn">← 上一頁</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="page-btn active">{{ p }}</span>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+        <a href="/bidding?page={{ p }}" class="page-btn">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="page-dots">...</span>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="/bidding?page={{ page + 1 }}" class="page-btn">下一頁 →</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+let searchTimeout;
+document.getElementById('searchInput').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const query = this.value.toLowerCase();
+        document.querySelectorAll('.tender-card').forEach(card => {
+            const name = (card.dataset.name || '').toLowerCase();
+            const tid = (card.dataset.tenderId || '').toLowerCase();
+            const org = (card.dataset.org || '').toLowerCase();
+            card.style.display = (name.includes(query) || tid.includes(query) || org.includes(query)) ? '' : 'none';
+        });
+    }, 300);
+});
+
+async function pushBiddingToDiscord(tenderId, btnElement) {
+    if (btnElement.disabled) return;
+    const originalHtml = btnElement.innerHTML;
+    btnElement.disabled = true;
+    btnElement.innerHTML = '⏳ 推送中';
+    try {
+        const resp = await fetch(`/api/bidding/${tenderId}/push-discord`, { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(data.message || '已推送', 'success');
+            btnElement.innerHTML = '✓ 已推送';
+            setTimeout(() => { btnElement.innerHTML = originalHtml; btnElement.disabled = false; }, 2000);
+        } else {
+            showToast(data.message || '推送失敗', 'error');
+            btnElement.innerHTML = originalHtml;
+            btnElement.disabled = false;
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+        btnElement.innerHTML = originalHtml;
+        btnElement.disabled = false;
+    }
+}
+</script>
+{% endblock %}

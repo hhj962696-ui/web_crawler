@@ -24,15 +24,26 @@ class Config:
 
     # Discord
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+    BIDDING_DISCORD_WEBHOOK_URL = os.getenv("BIDDING_DISCORD_WEBHOOK_URL", "")
 
     # 排程設定
     SCRAPE_SCHEDULE_HOUR = int(os.getenv("SCRAPE_SCHEDULE_HOUR", "8"))
     SCRAPE_SCHEDULE_MINUTE = int(os.getenv("SCRAPE_SCHEDULE_MINUTE", "10"))
+    BIDDING_SCHEDULE_HOUR = int(os.getenv("BIDDING_SCHEDULE_HOUR", "9"))
+    BIDDING_SCHEDULE_MINUTE = int(os.getenv("BIDDING_SCHEDULE_MINUTE", "0"))
     TRACK_CHECK_HOUR = int(os.getenv("TRACK_CHECK_HOUR", "12"))
     TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
 
     # 每日爬蟲回溯天數（含今天，例如 3 = 今天 + 前 2 天）
     SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
+    BIDDING_LOOKBACK_DAYS = max(1, int(os.getenv("BIDDING_LOOKBACK_DAYS", "3")))
+
+    # 公開招標採購性質篩選（工程/財物/勞務，留空=不限）
+    BIDDING_PROC_CATEGORIES = [
+        c.strip()
+        for c in os.getenv("BIDDING_PROC_CATEGORIES", "").split(",")
+        if c.strip()
+    ]
 
     # Discord 每則訊息 Embed 數量上限
     DISCORD_EMBED_BATCH_SIZE = min(10, max(1, int(os.getenv("DISCORD_EMBED_BATCH_SIZE", "5"))))
@@ -65,6 +76,9 @@ class Config:
     PCC_BASE_URL = "https://web.pcc.gov.tw"
     PCC_SEARCH_URL = f"{PCC_BASE_URL}/prkms/tpAppeal/common/readTpAppeal"
     PCC_INDEX_URL = f"{PCC_BASE_URL}/prkms/tpAppeal/common/indexTpAppeal"
+    PCC_BIDDING_SEARCH_URL = (
+        f"{PCC_BASE_URL}/prkms/tender/common/basic/readTenderBasic"
+    )
     REQUEST_DELAY_MIN = 2  # 最小延遲秒數
     REQUEST_DELAY_MAX = 5  # 最大延遲秒數
     MAX_RETRIES = 3  # 最大重試次數
@@ -77,11 +91,20 @@ class Config:
         """重新載入環境變數"""
         load_dotenv(cls.BASE_DIR / ".env", override=True, encoding="utf-8")
         cls.DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+        cls.BIDDING_DISCORD_WEBHOOK_URL = os.getenv("BIDDING_DISCORD_WEBHOOK_URL", "")
         cls.SCRAPE_SCHEDULE_HOUR = int(os.getenv("SCRAPE_SCHEDULE_HOUR", "8"))
         cls.SCRAPE_SCHEDULE_MINUTE = int(os.getenv("SCRAPE_SCHEDULE_MINUTE", "10"))
+        cls.BIDDING_SCHEDULE_HOUR = int(os.getenv("BIDDING_SCHEDULE_HOUR", "9"))
+        cls.BIDDING_SCHEDULE_MINUTE = int(os.getenv("BIDDING_SCHEDULE_MINUTE", "0"))
         cls.TRACK_CHECK_HOUR = int(os.getenv("TRACK_CHECK_HOUR", "12"))
         cls.TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
         cls.SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
+        cls.BIDDING_LOOKBACK_DAYS = max(1, int(os.getenv("BIDDING_LOOKBACK_DAYS", "3")))
+        cls.BIDDING_PROC_CATEGORIES = [
+            c.strip()
+            for c in os.getenv("BIDDING_PROC_CATEGORIES", "").split(",")
+            if c.strip()
+        ]
         cls.DISCORD_EMBED_BATCH_SIZE = min(
             10, max(1, int(os.getenv("DISCORD_EMBED_BATCH_SIZE", "5")))
         )

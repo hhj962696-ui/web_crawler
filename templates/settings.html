@@ -35,16 +35,24 @@
             排程設定
         </h2>
         <p class="settings-desc">
-            設定每日自動爬蟲與追蹤檢查的執行時間。
-            爬蟲每次擷取近 <strong>{{ scrape_lookback_days }}</strong> 天（含今天）的公開徵求，以案號去重。
+            公開徵求回溯 <strong>{{ scrape_lookback_days }}</strong> 天；公開招標回溯 <strong>{{ bidding_lookback_days }}</strong> 天（含今天）。
         </p>
 
         <div class="form-group">
-            <label class="form-label">每日爬蟲時間</label>
+            <label class="form-label">公開徵求爬蟲時間</label>
             <div class="time-input-group">
                 <input type="number" id="scrapeHour" class="input time-input" min="0" max="23" value="{{ schedule.scrape_hour }}">
                 <span class="time-separator">:</span>
                 <input type="number" id="scrapeMinute" class="input time-input" min="0" max="59" value="{{ schedule.scrape_minute }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">公開招標爬蟲時間</label>
+            <div class="time-input-group">
+                <input type="number" id="biddingHour" class="input time-input" min="0" max="23" value="{{ schedule.bidding_hour }}">
+                <span class="time-separator">:</span>
+                <input type="number" id="biddingMinute" class="input time-input" min="0" max="59" value="{{ schedule.bidding_minute }}">
             </div>
         </div>
 
@@ -70,16 +78,35 @@
         </div>
     </div>
 
+    <!-- 公開招標採購性質 -->
+    <div class="settings-card glass-card">
+        <h2 class="settings-title">
+            <span class="settings-icon">📂</span>
+            公開招標 — 採購性質
+        </h2>
+        <p class="settings-desc">勾選要擷取的採購性質；全不勾選表示<strong>不限</strong>（工程／財物／勞務皆含）。</p>
+        <div class="proc-category-group" id="procCategoryGroup">
+            {% for opt in proc_options %}
+            <label class="proc-checkbox">
+                <input type="checkbox" name="proc_cate" value="{{ opt }}"
+                    {% if opt in bidding_proc_categories %}checked{% endif %}>
+                {{ opt }}類
+            </label>
+            {% endfor %}
+        </div>
+        <button class="btn btn-primary" style="margin-top:12px" onclick="saveBiddingProc()">儲存採購性質</button>
+    </div>
+
     <!-- Discord 設定 -->
     <div class="settings-card glass-card">
         <h2 class="settings-title">
             <span class="settings-icon">💬</span>
             Discord 通知
         </h2>
-        <p class="settings-desc">Discord Webhook URL 用於推送爬蟲結果與追蹤通知。請勿將 URL 提交至 Git。</p>
+        <p class="settings-desc">公開徵求與公開招標使用不同 Webhook。請勿將 URL 提交至 Git。</p>
 
         <div class="form-group">
-            <label class="form-label">Webhook URL</label>
+            <label class="form-label">公開徵求 Webhook</label>
             <input type="password" id="webhookUrl" class="input" value="" placeholder="https://discord.com/api/webhooks/...">
             {% if webhook_configured %}
             <p class="settings-hint">目前已設定：{{ webhook_masked }}</p>
@@ -90,9 +117,20 @@
             </div>
         </div>
 
+        <div class="form-group" style="margin-top:20px">
+            <label class="form-label">公開招標 Webhook</label>
+            <input type="password" id="biddingWebhookUrl" class="input" value="" placeholder="https://discord.com/api/webhooks/...">
+            {% if bidding_webhook_configured %}
+            <p class="settings-hint">目前已設定：{{ bidding_webhook_masked }}</p>
+            {% endif %}
+            <div style="margin-top:8px">
+                <button class="btn btn-primary btn-small" onclick="saveBiddingWebhook()">儲存招標 Webhook</button>
+            </div>
+        </div>
+
         <button class="btn btn-secondary" onclick="testWebhook()">
             <span class="btn-icon">🧪</span>
-            發送測試通知
+            發送測試通知（公開徵求）
         </button>
     </div>
 
@@ -189,10 +227,48 @@ async function removeKeyword(keyword) {
     }
 }
 
+async function saveBiddingProc() {
+    const boxes = document.querySelectorAll('#procCategoryGroup input[name="proc_cate"]:checked');
+    const categories = Array.from(boxes).map(b => b.value);
+    try {
+        const resp = await fetch('/api/settings/bidding-proc', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({categories}),
+        });
+        const result = await resp.json();
+        showToast(result.success ? '採購性質已儲存' : (result.message || '儲存失敗'), result.success ? 'success' : 'error');
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+    }
+}
+
+async function saveBiddingWebhook() {
+    const url = document.getElementById('biddingWebhookUrl').value.trim();
+    if (!url) {
+        showToast('請輸入 Webhook URL', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/bidding-webhook', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({webhook_url: url}),
+        });
+        const data = await resp.json();
+        showToast(data.message, data.success ? 'success' : 'error');
+        if (data.success) setTimeout(() => location.reload(), 800);
+    } catch (e) {
+        showToast('儲存失敗', 'error');
+    }
+}
+
 async function saveSchedule() {
     const data = {
         scrape_hour: parseInt(document.getElementById('scrapeHour').value),
         scrape_minute: parseInt(document.getElementById('scrapeMinute').value),
+        bidding_hour: parseInt(document.getElementById('biddingHour').value),
+        bidding_minute: parseInt(document.getElementById('biddingMinute').value),
         track_hour: parseInt(document.getElementById('trackHour').value),
         track_minute: parseInt(document.getElementById('trackMinute').value),
     };

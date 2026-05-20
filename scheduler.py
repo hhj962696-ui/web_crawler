@@ -12,45 +12,60 @@ from apscheduler.triggers.cron import CronTrigger
 
 from config import config
 from scraper import run_scraper, check_tracked_tenders
+from bidding_scraper import run_bidding_scraper
 
 logger = logging.getLogger(__name__)
 
-# 全域排程器
 scheduler = BackgroundScheduler(timezone="Asia/Taipei")
 
-# 爬蟲執行鎖（避免同時執行多個爬蟲）
 _scraper_lock = threading.Lock()
-_is_running = False
+_running_mode = None  # None | "appeal" | "bidding" | "track"
 
 
 def _safe_run_scraper(scrape_type: str = "daily"):
-    """安全執行爬蟲（帶鎖機制）"""
-    global _is_running
-    if _is_running:
-        logger.warning("爬蟲正在執行中，跳過此次排程")
+    global _running_mode
+    if _running_mode:
+        logger.warning(f"爬蟲正在執行中（{_running_mode}），跳過此次排程")
         return
 
     with _scraper_lock:
-        _is_running = True
+        _running_mode = "appeal"
         try:
-            logger.info(f"[排程] 開始執行 {scrape_type} 爬蟲...")
+            logger.info(f"[排程] 開始執行 {scrape_type} 公開徵求爬蟲...")
             result = run_scraper(scrape_type=scrape_type)
-            logger.info(f"[排程] {scrape_type} 爬蟲完成: {result}")
+            logger.info(f"[排程] {scrape_type} 公開徵求完成: {result}")
         except Exception as e:
-            logger.error(f"[排程] 爬蟲執行異常: {e}", exc_info=True)
+            logger.error(f"[排程] 公開徵求爬蟲異常: {e}", exc_info=True)
         finally:
-            _is_running = False
+            _running_mode = None
+
+
+def _safe_run_bidding_scraper(scrape_type: str = "bidding_daily"):
+    global _running_mode
+    if _running_mode:
+        logger.warning(f"爬蟲正在執行中（{_running_mode}），跳過此次排程")
+        return
+
+    with _scraper_lock:
+        _running_mode = "bidding"
+        try:
+            logger.info(f"[排程] 開始執行 {scrape_type} 公開招標爬蟲...")
+            result = run_bidding_scraper(scrape_type=scrape_type)
+            logger.info(f"[排程] {scrape_type} 公開招標完成: {result}")
+        except Exception as e:
+            logger.error(f"[排程] 公開招標爬蟲異常: {e}", exc_info=True)
+        finally:
+            _running_mode = None
 
 
 def _safe_check_tracked():
-    """安全執行追蹤檢查"""
-    global _is_running
-    if _is_running:
+    global _running_mode
+    if _running_mode:
         logger.warning("爬蟲正在執行中，跳過追蹤檢查")
         return
 
     with _scraper_lock:
-        _is_running = True
+        _running_mode = "track"
         try:
             logger.info("[排程] 開始檢查追蹤案件...")
             result = check_tracked_tenders()
@@ -58,23 +73,20 @@ def _safe_check_tracked():
         except Exception as e:
             logger.error(f"[排程] 追蹤檢查異常: {e}", exc_info=True)
         finally:
-            _is_running = False
+            _running_mode = None
 
 
 def is_scraper_running() -> bool:
-    """檢查爬蟲是否正在執行"""
-    return _is_running
+    return _running_mode is not None
+
+
+def get_running_mode():
+    return _running_mode
 
 
 def manual_run_scraper() -> dict:
-    """
-    手動觸發爬蟲（非阻塞）
-
-    Returns:
-        dict: {"started": bool, "message": str}
-    """
-    if _is_running:
-        return {"started": False, "message": "爬蟲正在執行中，請稍後再試"}
+    if _running_mode:
+        return {"started": False, "message": f"爬蟲正在執行中（{_running_mode}），請稍後再試"}
 
     thread = threading.Thread(
         target=_safe_run_scraper,
@@ -82,13 +94,25 @@ def manual_run_scraper() -> dict:
         daemon=True,
     )
     thread.start()
-    return {"started": True, "message": "爬蟲已開始執行，請稍候查看結果"}
+    return {"started": True, "message": "公開徵求爬蟲已開始執行，請稍候查看結果"}
+
+
+def manual_run_bidding_scraper() -> dict:
+    if _running_mode:
+        return {"started": False, "message": f"爬蟲正在執行中（{_running_mode}），請稍後再試"}
+
+    thread = threading.Thread(
+        target=_safe_run_bidding_scraper,
+        args=("bidding_manual",),
+        daemon=True,
+    )
+    thread.start()
+    return {"started": True, "message": "公開招標爬蟲已開始執行，請稍候查看結果"}
 
 
 def manual_check_tracked() -> dict:
-    """手動觸發追蹤檢查（非阻塞）"""
-    if _is_running:
-        return {"started": False, "message": "爬蟲正在執行中，請稍後再試"}
+    if _running_mode:
+        return {"started": False, "message": f"爬蟲正在執行中（{_running_mode}），請稍後再試"}
 
     thread = threading.Thread(
         target=_safe_check_tracked,
@@ -99,7 +123,6 @@ def manual_check_tracked() -> dict:
 
 
 def _register_jobs():
-    """註冊或更新排程工作"""
     scheduler.add_job(
         _safe_run_scraper,
         CronTrigger(
@@ -110,6 +133,18 @@ def _register_jobs():
         name="每日公開徵求爬蟲",
         replace_existing=True,
         kwargs={"scrape_type": "daily"},
+    )
+
+    scheduler.add_job(
+        _safe_run_bidding_scraper,
+        CronTrigger(
+            hour=config.BIDDING_SCHEDULE_HOUR,
+            minute=config.BIDDING_SCHEDULE_MINUTE,
+        ),
+        id="daily_bidding_scraper",
+        name="每日公開招標爬蟲",
+        replace_existing=True,
+        kwargs={"scrape_type": "bidding_daily"},
     )
 
     scheduler.add_job(
@@ -125,20 +160,20 @@ def _register_jobs():
 
 
 def init_scheduler():
-    """初始化排程器"""
     _register_jobs()
     if not scheduler.running:
         scheduler.start()
     logger.info(
         f"排程器已啟動 — "
-        f"每日爬蟲: {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d}, "
-        f"回溯 {config.SCRAPE_LOOKBACK_DAYS} 天, "
+        f"公開徵求: {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d} "
+        f"(回溯 {config.SCRAPE_LOOKBACK_DAYS} 天), "
+        f"公開招標: {config.BIDDING_SCHEDULE_HOUR:02d}:{config.BIDDING_SCHEDULE_MINUTE:02d} "
+        f"(回溯 {config.BIDDING_LOOKBACK_DAYS} 天), "
         f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}"
     )
 
 
 def reschedule_jobs():
-    """重新載入排程（設定頁儲存後即時生效）"""
     if not scheduler.running:
         init_scheduler()
         return
@@ -147,7 +182,6 @@ def reschedule_jobs():
 
 
 def get_next_run_times() -> dict:
-    """取得下次排程執行時間"""
     jobs = scheduler.get_jobs()
     result = {}
     for job in jobs:
@@ -160,7 +194,6 @@ def get_next_run_times() -> dict:
 
 
 def shutdown_scheduler():
-    """關閉排程器"""
     if scheduler.running:
         scheduler.shutdown(wait=False)
         logger.info("排程器已關閉")

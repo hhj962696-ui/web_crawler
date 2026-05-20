@@ -56,6 +56,51 @@ class Tender(Base):
         }
 
 
+class BiddingTender(Base):
+    """公開招標案件資料表"""
+    __tablename__ = "bidding_tenders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tender_id = Column(String(100), unique=True, nullable=False, index=True)
+    tender_name = Column(Text, nullable=False)
+    org_name = Column(String(200), default="")
+    contact_person = Column(String(100), default="")
+    phone = Column(String(50), default="")
+    budget = Column(String(100), default="")
+    tender_url = Column(Text, default="")
+    status = Column(String(50), default="公開招標")
+    proctrg_cate = Column(String(50), default="")  # 工程類 / 財物類 / 勞務類
+    bid_deadline = Column(String(50), default="")  # 截止投標
+    tender_way = Column(String(50), default="")  # 招標方式
+    is_tracked = Column(Boolean, default=False, index=True)
+    track_note = Column(Text, default="")
+    scraped_at = Column(DateTime, default=datetime.now)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tender_id": self.tender_id,
+            "tender_name": self.tender_name,
+            "org_name": self.org_name,
+            "contact_person": self.contact_person,
+            "phone": self.phone,
+            "budget": self.budget,
+            "tender_url": self.tender_url,
+            "status": self.status,
+            "proctrg_cate": self.proctrg_cate,
+            "bid_deadline": self.bid_deadline,
+            "tender_way": self.tender_way,
+            "is_tracked": self.is_tracked,
+            "track_note": self.track_note,
+            "scraped_at": format_tw(self.scraped_at),
+            "scraped_at_iso": discord_timestamp(self.scraped_at),
+            "created_at": format_tw(self.created_at),
+            "updated_at": format_tw(self.updated_at),
+        }
+
+
 class ScrapeLog(Base):
     """爬蟲執行紀錄資料表"""
     __tablename__ = "scrape_logs"
