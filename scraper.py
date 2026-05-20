@@ -80,8 +80,14 @@ def _create_driver() -> webdriver.Chrome:
         chrome_options.add_argument(f"--proxy-server={proxy}")
         logger.info(f"使用 Proxy: {proxy}")
 
+    if config.CHROMIUM_BIN:
+        chrome_options.binary_location = config.CHROMIUM_BIN
+
     log_path = "NUL" if sys.platform == "win32" else os.devnull
-    service = Service(ChromeDriverManager().install(), log_output=log_path)
+    if config.CHROMEDRIVER_PATH:
+        service = Service(config.CHROMEDRIVER_PATH, log_output=log_path)
+    else:
+        service = Service(ChromeDriverManager().install(), log_output=log_path)
     driver = webdriver.Chrome(service=service, options=chrome_options)
     driver.set_page_load_timeout(config.PAGE_LOAD_TIMEOUT)
     driver.implicitly_wait(10)

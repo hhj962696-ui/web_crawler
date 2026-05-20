@@ -16,10 +16,10 @@ load_dotenv(_ENV_PATH, encoding="utf-8")
 class Config:
     """全域設定"""
 
-    # 基本路徑
-    BASE_DIR = BASE_DIR
-    DB_PATH = BASE_DIR / "database.db"
-    LOG_DIR = BASE_DIR / "logs"
+    # 基本路徑（Docker 可設 DATA_DIR=/app/data 持久化資料庫與日誌）
+    DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
+    DB_PATH = DATA_DIR / "database.db"
+    LOG_DIR = DATA_DIR / "logs"
     LOG_FILE = LOG_DIR / "scraper.log"
 
     # Discord
@@ -47,8 +47,10 @@ class Config:
         if kw.strip()
     ]
 
-    # Chrome
+    # Chrome / Chromium（Docker 內建路徑見 docker-compose.yml）
     CHROME_HEADLESS = os.getenv("CHROME_HEADLESS", "true").lower() == "true"
+    CHROMIUM_BIN = os.getenv("CHROMIUM_BIN", "").strip()
+    CHROMEDRIVER_PATH = os.getenv("CHROMEDRIVER_PATH", "").strip()
     PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", "90"))
 
     # 代理（公司網路若需 Proxy 可設定，例如 http://proxy.company:8080）
@@ -91,7 +93,14 @@ class Config:
             ).split(",")
             if kw.strip()
         ]
+        cls.DATA_DIR = Path(os.getenv("DATA_DIR", str(cls.BASE_DIR)))
+        cls.DB_PATH = cls.DATA_DIR / "database.db"
+        cls.LOG_DIR = cls.DATA_DIR / "logs"
+        cls.LOG_FILE = cls.LOG_DIR / "scraper.log"
+        cls.DATABASE_URL = f"sqlite:///{cls.DB_PATH}"
         cls.CHROME_HEADLESS = os.getenv("CHROME_HEADLESS", "true").lower() == "true"
+        cls.CHROMIUM_BIN = os.getenv("CHROMIUM_BIN", "").strip()
+        cls.CHROMEDRIVER_PATH = os.getenv("CHROMEDRIVER_PATH", "").strip()
         cls.PAGE_LOAD_TIMEOUT = int(os.getenv("PAGE_LOAD_TIMEOUT", "90"))
         cls.HTTP_PROXY = os.getenv("HTTP_PROXY", "").strip()
         cls.HTTPS_PROXY = os.getenv("HTTPS_PROXY", "").strip()
