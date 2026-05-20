@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="政府電子採購網公開徵求爬蟲系統 — 本地端自動化監控平台">
+    <title>{% block title %}採購爬蟲系統{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- 側邊欄導航 -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="logo-icon">🔍</span>
+                <span class="logo-text">採購爬蟲</span>
+            </div>
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="切換側邊欄">☰</button>
+        </div>
+
+        <ul class="nav-links">
+            <li>
+                <a href="/" class="nav-link {% if active_page == 'index' %}active{% endif %}" id="nav-index">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">全部案件</span>
+                </a>
+            </li>
+            <li>
+                <a href="/tracked" class="nav-link {% if active_page == 'tracked' %}active{% endif %}" id="nav-tracked">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">追蹤案件</span>
+                    {% if tracked_count is defined and tracked_count > 0 %}
+                    <span class="badge">{{ tracked_count }}</span>
+                    {% endif %}
+                </a>
+            </li>
+            <li>
+                <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}" id="nav-settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">系統設定</span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="schedule-info">
+                <div class="schedule-item">
+                    <span class="schedule-label">下次爬蟲</span>
+                    <span class="schedule-time" id="nextScrapeTime">--</span>
+                </div>
+                <div class="schedule-item">
+                    <span class="schedule-label">系統狀態</span>
+                    <span class="status-dot" id="systemStatus"></span>
+                    <span class="schedule-time" id="systemStatusText">運行中</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主內容區 -->
+    <main class="main-content" id="content">
+        <!-- 頂部狀態列 -->
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <button class="mobile-toggle" id="mobileToggle" aria-label="開啟選單">☰</button>
+                <h1 class="page-title">{% block page_title %}採購爬蟲系統{% endblock %}</h1>
+            </div>
+            <div class="top-bar-right">
+                <button class="btn btn-primary btn-glow" id="btnManualScrape" onclick="manualScrape()">
+                    <span class="btn-icon">🚀</span>
+                    <span>手動執行爬蟲</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- 頁面內容 -->
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Toast 通知容器 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>處理中...</p>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

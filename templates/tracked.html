@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}追蹤案件 — 採購爬蟲系統{% endblock %}
+{% block page_title %}追蹤案件{% endblock %}
+
+{% block content %}
+<!-- 追蹤統計 -->
+<div class="stats-grid stats-grid-small">
+    <div class="stat-card">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ tracked_tenders | length }}</span>
+            <span class="stat-label">追蹤中</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🔄</div>
+        <div class="stat-info">
+            <span class="stat-value">{{ status_changed_count }}</span>
+            <span class="stat-label">狀態變更</span>
+        </div>
+    </div>
+</div>
+
+<!-- 操作列 -->
+<div class="action-bar glass-card">
+    <button class="btn btn-secondary" onclick="manualCheckTracked()">
+        <span class="btn-icon">🔄</span>
+        <span>立即檢查狀態</span>
+    </button>
+</div>
+
+<!-- 追蹤案件列表 -->
+<div class="tender-list" id="trackedList">
+    {% for tender in tracked_tenders %}
+    <div class="tender-card glass-card tracked-card" data-id="{{ tender.id }}">
+        <div class="tender-header">
+            <div class="tender-title-row">
+                <h3 class="tender-name">
+                    {% if tender.tender_url %}
+                    <a href="{{ tender.tender_url }}" target="_blank" rel="noopener noreferrer">{{ tender.tender_name }}</a>
+                    {% else %}
+                    {{ tender.tender_name }}
+                    {% endif %}
+                </h3>
+                <button class="track-btn tracked"
+                        onclick="toggleTrack({{ tender.id }}, this)"
+                        title="取消追蹤"
+                        aria-label="取消追蹤">★</button>
+            </div>
+            <span class="tender-status status-{{ tender.status | replace(' ', '-') }}">{{ tender.status }}</span>
+        </div>
+
+        <div class="tender-details">
+            <div class="detail-item">
+                <span class="detail-label">📌 案號</span>
+                <span class="detail-value">{{ tender.tender_id }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🏢 機關</span>
+                <span class="detail-value">{{ tender.org_name or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">👤 承辦人</span>
+                <span class="detail-value">{{ tender.contact_person or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">📞 電話</span>
+                <span class="detail-value">{{ tender.phone or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">💰 預算</span>
+                <span class="detail-value budget">{{ tender.budget or '未公告' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🕐 更新時間</span>
+                <span class="detail-value">{{ tender.updated_at }}</span>
+            </div>
+        </div>
+
+        <!-- 備註區塊 -->
+        <div class="note-section">
+            <div class="note-header">
+                <span class="note-label">📝 追蹤備註</span>
+                <button class="btn btn-small btn-ghost" onclick="toggleNoteEdit({{ tender.id }})">編輯</button>
+            </div>
+            <div class="note-display" id="noteDisplay{{ tender.id }}">
+                {{ tender.track_note or '（點擊「編輯」新增備註）' }}
+            </div>
+            <div class="note-edit" id="noteEdit{{ tender.id }}" style="display:none">
+                <textarea class="note-textarea" id="noteInput{{ tender.id }}" rows="3" placeholder="輸入備註...">{{ tender.track_note or '' }}</textarea>
+                <div class="note-actions">
+                    <button class="btn btn-small btn-primary" onclick="saveNote({{ tender.id }})">儲存</button>
+                    <button class="btn btn-small btn-ghost" onclick="toggleNoteEdit({{ tender.id }})">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not tracked_tenders %}
+    <div class="empty-state">
+        <div class="empty-icon">⭐</div>
+        <h3>尚無追蹤案件</h3>
+        <p>前往「全部案件」頁面，點擊 ☆ 圖示將案件加入追蹤</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleNoteEdit(id) {
+    const display = document.getElementById('noteDisplay' + id);
+    const edit = document.getElementById('noteEdit' + id);
+    if (edit.style.display === 'none') {
+        edit.style.display = 'block';
+        display.style.display = 'none';
+    } else {
+        edit.style.display = 'none';
+        display.style.display = 'block';
+    }
+}
+
+async function saveNote(id) {
+    const noteInput = document.getElementById('noteInput' + id);
+    const note = noteInput.value;
+
+    try {
+        const resp = await fetch(`/api/tenders/${id}/note`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({note: note}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('noteDisplay' + id).textContent = note || '（點擊「編輯」新增備註）';
+            toggleNoteEdit(id);
+            showToast('備註已儲存', 'success');
+        } else {
+            showToast('儲存失敗', 'error');
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+    }
+}
+
+async function manualCheckTracked() {
+    try {
+        const resp = await fetch('/api/scrape/check-tracked', {method: 'POST'});
+        const data = await resp.json();
+        showToast(data.message, data.started ? 'success' : 'warning');
+    } catch (e) {
+        showToast('操作失敗', 'error');
+    }
+}
+</script>
+{% endblock %}

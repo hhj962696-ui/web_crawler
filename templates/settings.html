@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}系統設定 — 採購爬蟲系統{% endblock %}
+{% block page_title %}系統設定{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+    <!-- 關鍵字管理 -->
+    <div class="settings-card glass-card">
+        <h2 class="settings-title">
+            <span class="settings-icon">🏷️</span>
+            篩選關鍵字
+        </h2>
+        <p class="settings-desc">僅擷取案名包含以下關鍵字的案件。留空則擷取全部。</p>
+
+        <div class="keyword-list" id="keywordList">
+            {% for kw in keywords %}
+            <span class="keyword-tag">
+                {{ kw }}
+                <button class="keyword-remove" onclick="removeKeyword('{{ kw }}')" aria-label="移除關鍵字">×</button>
+            </span>
+            {% endfor %}
+        </div>
+
+        <div class="keyword-input-group">
+            <input type="text" id="newKeyword" class="input" placeholder="輸入新關鍵字..." onkeypress="if(event.key==='Enter') addKeyword()">
+            <button class="btn btn-primary" onclick="addKeyword()">新增</button>
+        </div>
+    </div>
+
+    <!-- 排程設定 -->
+    <div class="settings-card glass-card">
+        <h2 class="settings-title">
+            <span class="settings-icon">⏰</span>
+            排程設定
+        </h2>
+        <p class="settings-desc">設定每日自動爬蟲與追蹤檢查的執行時間。</p>
+
+        <div class="form-group">
+            <label class="form-label">每日爬蟲時間</label>
+            <div class="time-input-group">
+                <input type="number" id="scrapeHour" class="input time-input" min="0" max="23" value="{{ schedule.scrape_hour }}">
+                <span class="time-separator">:</span>
+                <input type="number" id="scrapeMinute" class="input time-input" min="0" max="59" value="{{ schedule.scrape_minute }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">追蹤檢查時間</label>
+            <div class="time-input-group">
+                <input type="number" id="trackHour" class="input time-input" min="0" max="23" value="{{ schedule.track_hour }}">
+                <span class="time-separator">:</span>
+                <input type="number" id="trackMinute" class="input time-input" min="0" max="59" value="{{ schedule.track_minute }}">
+            </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveSchedule()">儲存排程設定</button>
+
+        <div class="next-runs" id="nextRuns">
+            <h3>排程狀態</h3>
+            {% for job_id, job_info in next_runs.items() %}
+            <div class="next-run-item">
+                <span class="next-run-name">{{ job_info.name }}</span>
+                <span class="next-run-time">{{ job_info.next_run }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Discord 設定 -->
+    <div class="settings-card glass-card">
+        <h2 class="settings-title">
+            <span class="settings-icon">💬</span>
+            Discord 通知
+        </h2>
+        <p class="settings-desc">Discord Webhook URL 用於推送爬蟲結果與追蹤通知。</p>
+
+        <div class="form-group">
+            <label class="form-label">Webhook URL</label>
+            <input type="password" id="webhookUrl" class="input" value="{{ webhook_masked }}" placeholder="https://discord.com/api/webhooks/...">
+            <button class="btn btn-ghost btn-small" onclick="toggleWebhookVisibility()" style="margin-top:8px">顯示/隱藏</button>
+        </div>
+
+        <button class="btn btn-secondary" onclick="testWebhook()">
+            <span class="btn-icon">🧪</span>
+            發送測試通知
+        </button>
+    </div>
+
+    <!-- 爬蟲執行紀錄 -->
+    <div class="settings-card glass-card full-width">
+        <h2 class="settings-title">
+            <span class="settings-icon">📜</span>
+            爬蟲執行紀錄
+        </h2>
+
+        <div class="log-table-wrapper">
+            <table class="log-table">
+                <thead>
+                    <tr>
+                        <th>類型</th>
+                        <th>開始時間</th>
+                        <th>結束時間</th>
+                        <th>找到</th>
+                        <th>新增</th>
+                        <th>更新</th>
+                        <th>狀態</th>
+                        <th>錯誤</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in scrape_logs %}
+                    <tr class="log-row log-{{ log.status }}">
+                        <td>
+                            <span class="log-type-badge type-{{ log.scrape_type }}">{{ log.scrape_type }}</span>
+                        </td>
+                        <td>{{ log.started_at }}</td>
+                        <td>{{ log.finished_at }}</td>
+                        <td>{{ log.total_found }}</td>
+                        <td>{{ log.new_count }}</td>
+                        <td>{{ log.updated_count }}</td>
+                        <td>
+                            <span class="log-status-badge status-{{ log.status }}">{{ log.status }}</span>
+                        </td>
+                        <td class="error-cell">{{ log.error_message[:80] if log.error_message else '' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not scrape_logs %}
+                    <tr>
+                        <td colspan="8" class="empty-log">尚無執行紀錄</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function addKeyword() {
+    const input = document.getElementById('newKeyword');
+    const keyword = input.value.trim();
+    if (!keyword) return;
+
+    try {
+        const resp = await fetch('/api/settings/keywords', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({keyword: keyword}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            input.value = '';
+            location.reload();
+        } else {
+            showToast(data.message || '新增失敗', 'error');
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+    }
+}
+
+async function removeKeyword(keyword) {
+    try {
+        const resp = await fetch('/api/settings/keywords', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({keyword: keyword}),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            showToast(data.message || '移除失敗', 'error');
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+    }
+}
+
+async function saveSchedule() {
+    const data = {
+        scrape_hour: parseInt(document.getElementById('scrapeHour').value),
+        scrape_minute: parseInt(document.getElementById('scrapeMinute').value),
+        track_hour: parseInt(document.getElementById('trackHour').value),
+        track_minute: parseInt(document.getElementById('trackMinute').value),
+    };
+
+    try {
+        const resp = await fetch('/api/settings/schedule', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+        if (result.success) {
+            showToast('排程設定已儲存（需重啟生效）', 'success');
+        } else {
+            showToast('儲存失敗', 'error');
+        }
+    } catch (e) {
+        showToast('網路錯誤', 'error');
+    }
+}
+
+async function testWebhook() {
+    try {
+        showToast('正在發送測試通知...', 'info');
+        const resp = await fetch('/api/settings/test-webhook', {method: 'POST'});
+        const data = await resp.json();
+        showToast(data.message, data.success ? 'success' : 'error');
+    } catch (e) {
+        showToast('發送失敗', 'error');
+    }
+}
+
+function toggleWebhookVisibility() {
+    const input = document.getElementById('webhookUrl');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+</script>
+{% endblock %}

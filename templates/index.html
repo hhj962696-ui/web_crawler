@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}全部案件 — 採購爬蟲系統{% endblock %}
+{% block page_title %}全部案件{% endblock %}
+
+{% block content %}
+<!-- 統計卡片 -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">📊</div>
+        <div class="stat-info">
+            <span class="stat-value" id="statTotal">{{ stats.total }}</span>
+            <span class="stat-label">案件總數</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🆕</div>
+        <div class="stat-info">
+            <span class="stat-value" id="statToday">{{ stats.today }}</span>
+            <span class="stat-label">今日新增</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-info">
+            <span class="stat-value" id="statTracked">{{ stats.tracked }}</span>
+            <span class="stat-label">追蹤中</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🕐</div>
+        <div class="stat-info">
+            <span class="stat-value stat-time" id="statLastScrape">{{ stats.last_scrape or '--' }}</span>
+            <span class="stat-label">上次爬蟲</span>
+        </div>
+    </div>
+</div>
+
+<!-- 搜尋與篩選 -->
+<div class="filter-bar glass-card">
+    <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜尋案名、案號、機關..." class="search-input" autocomplete="off">
+    </div>
+    <div class="filter-group">
+        <select id="filterStatus" class="filter-select" onchange="loadTenders()">
+            <option value="">全部狀態</option>
+            <option value="公開徵求">公開徵求</option>
+            <option value="已決標">已決標</option>
+            <option value="已截止">已截止</option>
+            <option value="廢標">廢標</option>
+        </select>
+        <select id="filterTracked" class="filter-select" onchange="loadTenders()">
+            <option value="">全部案件</option>
+            <option value="true">僅追蹤</option>
+            <option value="false">未追蹤</option>
+        </select>
+        <select id="sortBy" class="filter-select" onchange="loadTenders()">
+            <option value="newest">最新優先</option>
+            <option value="oldest">最舊優先</option>
+            <option value="budget_high">預算高→低</option>
+            <option value="budget_low">預算低→高</option>
+        </select>
+    </div>
+</div>
+
+<!-- 案件列表 -->
+<div class="tender-list" id="tenderList">
+    {% for tender in tenders %}
+    <div class="tender-card glass-card" data-id="{{ tender.id }}" data-name="{{ tender.tender_name }}" data-tender-id="{{ tender.tender_id }}" data-org="{{ tender.org_name }}">
+        <div class="tender-header">
+            <div class="tender-title-row">
+                <h3 class="tender-name">
+                    {% if tender.tender_url %}
+                    <a href="{{ tender.tender_url }}" target="_blank" rel="noopener noreferrer">{{ tender.tender_name }}</a>
+                    {% else %}
+                    {{ tender.tender_name }}
+                    {% endif %}
+                </h3>
+                <button class="track-btn {{ 'tracked' if tender.is_tracked else '' }}"
+                        onclick="toggleTrack({{ tender.id }}, this)"
+                        title="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}"
+                        aria-label="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}">
+                    {{ '★' if tender.is_tracked else '☆' }}
+                </button>
+            </div>
+            <span class="tender-status status-{{ tender.status | replace(' ', '-') }}">{{ tender.status }}</span>
+        </div>
+        <div class="tender-details">
+            <div class="detail-item">
+                <span class="detail-label">📌 案號</span>
+                <span class="detail-value">{{ tender.tender_id }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🏢 機關</span>
+                <span class="detail-value">{{ tender.org_name or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">👤 承辦人</span>
+                <span class="detail-value">{{ tender.contact_person or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">📞 電話</span>
+                <span class="detail-value">{{ tender.phone or 'N/A' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">💰 預算</span>
+                <span class="detail-value budget">{{ tender.budget or '未公告' }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">🕐 爬取時間</span>
+                <span class="detail-value">{{ tender.scraped_at }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not tenders %}
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>尚無案件資料</h3>
+        <p>點擊右上角「手動執行爬蟲」按鈕開始擷取資料</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 分頁 -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/?page={{ page - 1 }}" class="page-btn">← 上一頁</a>
+    {% endif %}
+
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="page-btn active">{{ p }}</span>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+        <a href="/?page={{ p }}" class="page-btn">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="page-dots">...</span>
+        {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a href="/?page={{ page + 1 }}" class="page-btn">下一頁 →</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 搜尋防抖
+    let searchTimeout;
+    document.getElementById('searchInput').addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = this.value.toLowerCase();
+            document.querySelectorAll('.tender-card').forEach(card => {
+                const name = (card.dataset.name || '').toLowerCase();
+                const tid = (card.dataset.tenderId || '').toLowerCase();
+                const org = (card.dataset.org || '').toLowerCase();
+                const match = name.includes(query) || tid.includes(query) || org.includes(query);
+                card.style.display = match ? '' : 'none';
+            });
+        }, 300);
+    });
+</script>
+{% endblock %}
