@@ -1,6 +1,6 @@
-# 政府電子採購網 — 公開徵求爬蟲系統
+# 政府電子採購網 — 公開徵求／公開招標爬蟲系統
 
-本地端自動擷取 [政府電子採購網](https://web.pcc.gov.tw)「公開徵求」公告，篩選資通訊相關案件，寫入 SQLite，並透過 Discord Webhook 推送；提供 Web 介面瀏覽、追蹤與手動推送。
+本地端自動擷取 [政府電子採購網](https://web.pcc.gov.tw)「**公開徵求**」與「**公開招標**」公告，篩選資通訊相關案件，寫入 SQLite，並透過 Discord Webhook 推送；提供 Web 介面瀏覽、追蹤與手動推送。
 
 > **給新對話的 AI / 開發者**：本文記錄從零到目前為止的決策、架構與操作方式。下一階段預計：**本機測試完成後，持續驗證 NAS（Synology DS423）部署**。
 
@@ -38,6 +38,13 @@
 | 手動推送 | 每案「📤 推送」按鈕 → `POST /api/tenders/{id}/push-discord` |
 | NAS | DS423（ARM64）Dockerfile + docker-compose；`data/` 資料夾必須先建立 |
 | 本機驗證 | `python run.py` 成功運行於 `http://127.0.0.1:8000`（**不需 XAMPP**） |
+| **公開招標** | `bidding_scraper.py`、`bidding_tenders` 表、Web「公開招標」分頁、排程 09:00 |
+| **Discord 分流** | 徵求 `DISCORD_WEBHOOK_URL`；招標 `BIDDING_DISCORD_WEBHOOK_URL`，Embed 標題區分 |
+| **案號同步** | 同案號先徵求後招標 → `tenders.status` 更新為「公開招標」 |
+| **手動爬蟲** | 頂部拆成「手動徵求爬蟲」「手動招標爬蟲」 |
+| **電話欄位** | 詳情頁誤抓長文修正；`repair-phones` / `enrich-bidding` |
+| **設定頁擴充** | 招標排程、採購性質（工程/財物/勞務）、招標 Webhook |
+| **Bug 修復** | `config.BASE_DIR` 缺失導致儲存 Webhook 500 |
 
 ---
 
@@ -77,19 +84,20 @@
 ## 系統架構
 
 ```
-政府電子採購網 (readTpAppeal)
-        │
-        ▼ Selenium + Chromium（列表 + 詳情頁補抓）
-   scraper.py ──► 關鍵字篩選 ──► SQLite (database.db)
-        │                              │
-        ▼                              ▼
- discord_notifier.py            FastAPI Web UI
-        │                              │
-        ▼                              ▼
-   Discord Webhook              瀏覽器 :8000
+政府電子採購網
+  ├─ readTpAppeal（公開徵求）  ──► scraper.py       ──► tenders
+  └─ readTenderBasic（公開招標）──► bidding_scraper.py ──► bidding_tenders
+              │
+              ▼ Selenium + Chromium（列表 + 詳情頁補抓）
+        關鍵字篩選（共用 FILTER_KEYWORDS）
+              │
+              ├──────────────► discord_notifier.py ──► Discord Webhook（徵求 / 招標分流）
+              │
+              └──────────────► FastAPI Web UI ──► 瀏覽器 :8000
 
 排程 (scheduler.py):
-  - 每日 08:10 爬蟲 (SCRAPE_SCHEDULE_*)
+  - 每日 08:10 公開徵求爬蟲 (SCRAPE_SCHEDULE_*)
+  - 每日 09:00 公開招標爬蟲 (BIDDING_SCHEDULE_*)
   - 每日 12:00 追蹤檢查 (TRACK_CHECK_*)
 ```
 
@@ -102,13 +110,17 @@
 | 項目 | 決策 |
 |------|------|
 | 爬取範圍 | 滾動 **近 3 天**（含今天），案號去重 |
-| 篩選 | 案名 + 機關名稱 **OR** 關鍵字 |
-| 詳情補抓 | **新案**缺欄位時進詳情頁；既有案可 `enrich` |
+| 篩選 | 案名 + 機關名稱 **OR** 關鍵字（徵求、招標共用 `FILTER_KEYWORDS`） |
+| 詳情補抓 | **新案**缺欄位時進詳情頁；既有案可 `enrich` / `enrich-bidding` |
 | Discord 新案 | 僅**首次入庫**推送；0 新案不通知 |
 | Discord 格式 | Embed；每則最多 5 筆（`DISCORD_EMBED_BATCH_SIZE`） |
-| 手動推送 | 標題「📤 手動推送案件」，格式與新案相同 |
+| Discord 分流 | 徵求、招標使用**不同 Webhook**；Embed 標題區分 |
+| 手動推送 | 標題「📤 手動推送案件」，招標為「📤 手動推送案件（公開招標）」 |
 | 追蹤監控 | 12:00 檢查狀態（已決標/廢標/流標/已截止等） |
 | 資料庫 | **SQLite**，`data/database.db`（Docker）或專案根目錄（本機） |
+| 公開招標資料 | 獨立表 `bidding_tenders`，Web 獨立分頁 `/bidding` |
+| 招標採購性質 | 可選工程/財物/勞務（`BIDDING_PROC_CATEGORIES`）；留空=不限 |
+| 案號跨階段 | 徵求→招標視為同一案，更新 `tenders.status` 為「公開招標」 |
 | 預算 | 公開徵求階段常為「未公告」，屬正常 |
 | 時區 | Asia/Taipei |
 
@@ -120,10 +132,11 @@
 web_crawler/
 ├── run.py                 # 統一啟動（Web + 排程）
 ├── app.py                 # FastAPI 路由與 Web UI
-├── scraper.py             # 爬蟲核心（列表/詳情/補抓）
+├── scraper.py             # 公開徵求爬蟲（列表/詳情/補抓）
+├── bidding_scraper.py     # 公開招標爬蟲
 ├── discord_notifier.py    # Discord 通知
 ├── scheduler.py           # APScheduler
-├── models.py              # SQLAlchemy 模型
+├── models.py              # SQLAlchemy 模型（tenders / bidding_tenders）
 ├── config.py              # 設定（讀 .env）
 ├── network_check.py       # 政府採購網連線檢測
 ├── time_utils.py          # 台北時區
@@ -133,7 +146,12 @@ web_crawler/
 ├── data/                  # Docker 持久化目錄（NAS 必建）
 │   └── .gitkeep
 ├── logs/                  # 本機日誌
-├── templates/             # Jinja2 頁面
+├── templates/
+│   ├── index.html         # 公開徵求列表
+│   ├── bidding.html       # 公開招標列表
+│   ├── tracked.html
+│   ├── settings.html
+│   └── base.html
 ├── static/                # CSS / JS
 ├── scripts/
 │   ├── cli.py             # 命令列工具
@@ -164,7 +182,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
-# 編輯 .env：DISCORD_WEBHOOK_URL、FILTER_KEYWORDS 等（UTF-8 存檔）
+# 編輯 .env：DISCORD_WEBHOOK_URL、BIDDING_DISCORD_WEBHOOK_URL、FILTER_KEYWORDS 等（UTF-8 存檔）
 ```
 
 ### 啟動（終端機需保持開啟）
@@ -177,17 +195,19 @@ python run.py
 
 瀏覽器：**http://127.0.0.1:8000**
 
-成功訊息含：`Uvicorn running on http://127.0.0.1:8000`
+成功訊息含：`Uvicorn running on http://127.0.0.1:8000`  
+排程 log 應顯示：公開徵求 08:10、公開招標 09:00、追蹤檢查 12:00
 
 ### 建議測試清單（本機）
 
-- [ ] 首頁載入
-- [ ] 設定頁 → Discord 測試通知
-- [ ] 手動執行爬蟲 → 列表有資料
-- [ ] 承辦人/電話非 N/A
-- [ ] 📤 推送單案到 Discord
+- [ ] 公開徵求、公開招標分頁載入
+- [ ] 設定頁 → Discord 測試通知（徵求 Webhook）
+- [ ] 手動徵求 / 手動招標爬蟲 → 列表有資料
+- [ ] 承辦人/電話非 N/A（異常電話可跑 `repair-phones`）
+- [ ] 📤 推送單案到 Discord（徵求、招標各測一次）
 - [ ] ☆ 追蹤 → 追蹤分頁
-- [ ] 匯出 CSV
+- [ ] 匯出 CSV（徵求、招標）
+- [ ] 設定頁儲存招標 Webhook、採購性質、排程
 
 ---
 
@@ -199,13 +219,27 @@ python run.py
 .\venv\Scripts\python.exe scripts\cli.py status
 .\venv\Scripts\python.exe scripts\cli.py check-network
 .\venv\Scripts\python.exe scripts\cli.py test-discord
+
+# 公開徵求
 .\venv\Scripts\python.exe scripts\cli.py scrape
-.\venv\Scripts\python.exe scripts\cli.py enrich          # 補抓承辦人/電話
+.\venv\Scripts\python.exe scripts\cli.py enrich              # 補抓徵求承辦人/電話
 .\venv\Scripts\python.exe scripts\cli.py list --limit 10
-.\venv\Scripts\python.exe scripts\cli.py notify-preview --limit 5   # 預覽 DC 排版
+
+# 公開招標
+.\venv\Scripts\python.exe scripts\cli.py scrape-bidding
+.\venv\Scripts\python.exe scripts\cli.py enrich-bidding      # 補抓招標承辦人/電話
+.\venv\Scripts\python.exe scripts\cli.py list-bidding --limit 10
+
+# 電話修正（徵求 + 招標，不需重新爬蟲）
+.\venv\Scripts\python.exe scripts\cli.py repair-phones
+
+# 其他
+.\venv\Scripts\python.exe scripts\cli.py notify-preview --limit 5
 .\venv\Scripts\python.exe scripts\cli.py export -o tenders.csv
 .\venv\Scripts\python.exe scripts\cli.py check-tracked
 ```
+
+> **注意**：`enrich` 只處理 `tenders`（公開徵求）；公開招標請用 `enrich-bidding` 或 `repair-phones`。
 
 ---
 
@@ -217,7 +251,7 @@ python run.py
 
 1. 複製專案到 `/docker/pcc-scraper`（或 `/volume1/docker/pcc-scraper`）
 2. **必須先建立** `data` 資料夾（否則 `Bind mount failed ... data does not exist`）
-3. 建立 `.env`（UTF-8），勿提交 Git
+3. 建立 `.env`（UTF-8），勿提交 Git（含雙 Webhook）
 4. Container Manager → 專案 → Build → 啟動
 5. 瀏覽器：`http://NAS_IP:8000`
 6. **不要用 Windows PowerShell 的 `sudo`**；UNC 路徑僅能複製檔案
@@ -237,20 +271,22 @@ python run.py
 
 | 頁面 | 功能 |
 |------|------|
-| 全部案件 | 列表、搜尋篩選、追蹤、**推送 Discord**、匯出 CSV |
+| 公開徵求 (`/`) | 列表、搜尋篩選、追蹤、推送 Discord、匯出 CSV |
+| **公開招標 (`/bidding`)** | 列表、搜尋、推送招標 Discord、匯出 CSV |
 | 追蹤案件 | 已追蹤列表、備註、立即檢查狀態 |
-| 系統設定 | 關鍵字、排程、Webhook 測試、執行紀錄 |
+| 系統設定 | 關鍵字、徵求/招標排程、採購性質、雙 Webhook、執行紀錄 |
 
-側邊欄：**手動執行爬蟲**（背景執行，換頁會透過 API 同步「執行中」狀態）
+頂部按鈕：**手動徵求爬蟲**、**手動招標爬蟲**（背景執行，換頁會透過 API 同步「執行中」狀態）
 
 ---
 
 ## 資料儲存說明
 
-| 檔案 | 說明 |
-|------|------|
-| `tenders` 表 | 案件主資料 |
-| `scrape_logs` 表 | 每次爬蟲執行紀錄（含 `running` / `success` / `error`） |
+| 表 / 檔案 | 說明 |
+|-----------|------|
+| `tenders` | 公開徵求案件 |
+| `bidding_tenders` | 公開招標案件（含採購性質、截止投標） |
+| `scrape_logs` | 每次爬蟲執行紀錄（含 `daily` / `bidding_daily` / `manual` 等） |
 | `.env` | 密鑰與排程（**勿 commit**） |
 
 **不需要 MariaDB。** 備份 `data/` 或 `database.db` 即可。
@@ -261,15 +297,21 @@ python run.py
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
-| GET | `/` | 首頁 |
+| GET | `/` | 公開徵求列表 |
+| GET | `/bidding` | 公開招標列表 |
 | GET | `/tracked` | 追蹤頁 |
 | GET | `/settings` | 設定頁 |
-| POST | `/api/scrape/run` | 手動爬蟲 |
-| GET | `/api/scrape/status` | 是否執行中 |
+| POST | `/api/scrape/run` | 手動徵求爬蟲 |
+| POST | `/api/scrape/run-bidding` | 手動招標爬蟲 |
+| GET | `/api/scrape/status` | 爬蟲執行狀態（含 mode） |
 | POST | `/api/tenders/{id}/track` | 切換追蹤 |
-| POST | `/api/tenders/{id}/push-discord` | 手動推送 Discord |
-| GET | `/api/export/csv` | 匯出 CSV |
-| POST | `/api/settings/test-webhook` | 測試 Webhook |
+| POST | `/api/tenders/{id}/push-discord` | 手動推送徵求案件 |
+| POST | `/api/bidding/{id}/push-discord` | 手動推送招標案件 |
+| GET | `/api/export/csv` | 匯出徵求 CSV |
+| GET | `/api/export/bidding-csv` | 匯出招標 CSV |
+| PUT | `/api/settings/bidding-webhook` | 招標 Webhook |
+| PUT | `/api/settings/bidding-proc` | 招標採購性質 |
+| POST | `/api/settings/test-webhook` | 測試徵求 Webhook |
 
 ---
 
@@ -278,7 +320,10 @@ python run.py
 | 現象 | 原因 | 處理 |
 |------|------|------|
 | Discord 關鍵字亂碼 | `.env` 非 UTF-8 | 用 UTF-8 重存 `.env` |
-| 承辦人/電話 N/A | 未進詳情頁 | 已修；重跑 `scrape` + `enrich` |
+| 承辦人/電話 N/A | 未進詳情頁 | 重跑 `scrape` + `enrich` 或 `scrape-bidding` + `enrich-bidding` |
+| 電話欄位整段投標須知 | 詳情頁誤配長文本 | `repair-phones`；新爬入案件已自動清洗 |
+| `enrich` 後招標沒變 | `enrich` 只處理 `tenders` | 改用 `enrich-bidding` 或 `repair-phones` |
+| 儲存招標 Webhook 500 | `config.BASE_DIR` 未定义 | 已修；重啟 `run.py` |
 | `no such table: tenders` | 未 init DB | `cli status` 會自動建表 |
 | 本機 8000 無法連線 | 未執行 `run.py` | 保持 `python run.py` 視窗開啟 |
 | NAS bind mount 失敗 | 無 `data/` | File Station 建立 `data` |
@@ -295,16 +340,19 @@ python run.py
 ### A. NAS 端驗證
 
 - [ ] 容器穩定運行 24h
-- [ ] 次日 08:10 自動爬蟲 + Discord 新案通知
+- [ ] 次日 08:10 公開徵求 + Discord 新案通知
+- [ ] 次日 09:00 公開招標 + Discord 新案通知（招標頻道）
 - [ ] 12:00 追蹤狀態檢查
 - [ ] `data/database.db` 持久化（重啟容器資料仍在）
 - [ ] 本機更新檔案後 NAS rebuild/restart 流程
 
 ### B. 功能回歸
 
-- [ ] 手動推送、自動新案 Embed 格式一致
+- [ ] 手動推送、自動新案 Embed 格式一致（徵求 / 招標）
 - [ ] 時間顯示為台北時間
 - [ ] 關鍵字篩選是否符合預期（可調 `FILTER_KEYWORDS`）
+- [ ] 招標採購性質篩選（工程/財物/勞務）
+- [ ] `repair-phones` 修正異常電話
 
 ### C. 可選增強（尚未實作）
 
@@ -320,10 +368,25 @@ python run.py
 見 [.env.example](.env.example)。重要項目：
 
 ```env
+# Discord（徵求 / 招標分流）
 DISCORD_WEBHOOK_URL=...
+BIDDING_DISCORD_WEBHOOK_URL=...
+
+# 排程
 SCRAPE_SCHEDULE_HOUR=8
 SCRAPE_SCHEDULE_MINUTE=10
+BIDDING_SCHEDULE_HOUR=9
+BIDDING_SCHEDULE_MINUTE=0
+TRACK_CHECK_HOUR=12
+TRACK_CHECK_MINUTE=0
+
+# 回溯天數
 SCRAPE_LOOKBACK_DAYS=3
+BIDDING_LOOKBACK_DAYS=3
+
+# 招標採購性質（留空=工程+財物+勞務全要）
+# BIDDING_PROC_CATEGORIES=財物,勞務
+
 FILTER_KEYWORDS=網路設備,資訊設備,...
 APP_HOST=127.0.0.1          # NAS Docker 用 0.0.0.0
 APP_PORT=8000
@@ -338,4 +401,4 @@ CHROME_HEADLESS=true
 
 ---
 
-*最後更新：2026-05-20 — 本機 `run.py` 已驗證可運行；NAS DS423 Docker 已設定待完整驗證。*
+*最後更新：2026-05-20 — 公開招標模組上線（排程、Web、CLI、雙 Webhook）；電話欄位清洗與 repair-phones；本機 run.py 已驗證。*
