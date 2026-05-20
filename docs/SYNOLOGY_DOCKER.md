@@ -30,11 +30,23 @@ DSM：**7.3** 以上，使用 **Container Manager**（原 Docker）。
   ├── Dockerfile
   ├── docker-compose.yml
   ├── .env              ← 自行建立（見下方）
-  ├── data/             ← 自動產生，存放 database.db
+  ├── data/             ← 【必須手動建立】存放 database.db（見下方）
   ├── app.py
   ├── run.py
   └── ...
 ```
+
+### ⚠️ 重要：先建立 `data` 資料夾
+
+Container Manager 啟動前，**一定要在 File Station 建立**：
+
+`/docker/pcc-scraper/data`
+
+（完整路徑通常是 `/volume1/docker/pcc-scraper/data`）
+
+若缺少此資料夾，會出現錯誤：
+
+`Bind mount failed: '/volume1/docker/pcc-scraper/data' does not exist`
 
 ---
 

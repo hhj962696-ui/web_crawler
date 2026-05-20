@@ -3,7 +3,8 @@
 
 # Database
 *.db
-data/
+data/*
+!data/.gitkeep
 
 # Python
 __pycache__/
