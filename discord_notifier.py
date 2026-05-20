@@ -62,12 +62,17 @@ def _build_tender_description(tender: dict) -> str:
     org = _display(tender.get("org_name"))
     tid = _display(tender.get("tender_id"))
 
+    scraped_display = _display(tender.get("scraped_at"))
+    time_line = f"🕐 **爬取時間**　{scraped_display}（台北）" if scraped_display != "—" else ""
+
     lines = [
         f"📌 **案號**　`{tid}`",
         f"🏢 **機關**　{org}",
         f"👤 **承辦**　{contact}　　📞 **電話**　{phone}",
         f"💰 **預算**　{budget}　　📊 **狀態**　{status}",
     ]
+    if time_line:
+        lines.append(time_line)
 
     url = (tender.get("tender_url") or "").strip()
     if url:
@@ -89,9 +94,9 @@ def _build_tender_embed(tender: dict, index: int = None) -> dict:
         "color": color,
     }
 
-    scraped_at = tender.get("scraped_at", "")
-    if scraped_at:
-        embed["timestamp"] = scraped_at
+    ts = tender.get("scraped_at_iso") or tender.get("scraped_at", "")
+    if ts:
+        embed["timestamp"] = ts
 
     url = (tender.get("tender_url") or "").strip()
     if url:
@@ -273,7 +278,7 @@ def send_test_notification() -> bool:
         "title": "✅ Webhook 連線測試成功",
         "color": COLOR_INFO,
         "description": (
-            f"⏰ **測試時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"⏰ **測試時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}（本機時區）\n"
             f"🔑 **篩選關鍵字**　{', '.join(config.FILTER_KEYWORDS) or '未設定'}"
         ),
     }

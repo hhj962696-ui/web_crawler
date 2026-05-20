@@ -4,6 +4,8 @@
 """
 
 from datetime import datetime
+
+from time_utils import format_tw, discord_timestamp
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text,
     Boolean, DateTime, event
@@ -47,9 +49,10 @@ class Tender(Base):
             "status": self.status,
             "is_tracked": self.is_tracked,
             "track_note": self.track_note,
-            "scraped_at": self.scraped_at.strftime("%Y-%m-%d %H:%M") if self.scraped_at else "",
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M") if self.created_at else "",
-            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M") if self.updated_at else "",
+            "scraped_at": format_tw(self.scraped_at),
+            "scraped_at_iso": discord_timestamp(self.scraped_at),
+            "created_at": format_tw(self.created_at),
+            "updated_at": format_tw(self.updated_at),
         }
 
 

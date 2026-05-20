@@ -10,6 +10,8 @@ import re
 import sys
 import time
 from datetime import datetime, date, timedelta
+
+from time_utils import now_tw, format_tw, discord_timestamp
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -591,7 +593,7 @@ def run_scraper(
 
         # 新案進詳情頁補抓後再入庫
         new_tenders: list[dict] = []
-        scraped_at = datetime.now().isoformat()
+        scraped_now = now_tw()
         for tender_data in new_candidates:
             if _needs_detail_enrichment(tender_data):
                 _enrich_tender_from_detail(driver, tender_data)
@@ -606,11 +608,12 @@ def run_scraper(
                 budget=tender_data.get("budget", "").strip(),
                 tender_url=tender_data.get("tender_url", "").strip(),
                 status=tender_data.get("status", "公開徵求") or "公開徵求",
-                scraped_at=datetime.now(),
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
+                scraped_at=scraped_now.replace(tzinfo=None),
+                created_at=scraped_now.replace(tzinfo=None),
+                updated_at=scraped_now.replace(tzinfo=None),
             ))
-            tender_data["scraped_at"] = scraped_at
+            tender_data["scraped_at"] = format_tw(scraped_now)
+            tender_data["scraped_at_iso"] = discord_timestamp(scraped_now)
             new_tenders.append(tender_data)
 
         db.commit()
