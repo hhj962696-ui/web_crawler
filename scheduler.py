@@ -98,9 +98,8 @@ def manual_check_tracked() -> dict:
     return {"started": True, "message": "追蹤檢查已開始執行"}
 
 
-def init_scheduler():
-    """初始化排程器"""
-    # 每日爬蟲排程
+def _register_jobs():
+    """註冊或更新排程工作"""
     scheduler.add_job(
         _safe_run_scraper,
         CronTrigger(
@@ -113,7 +112,6 @@ def init_scheduler():
         kwargs={"scrape_type": "daily"},
     )
 
-    # 追蹤案件檢查排程
     scheduler.add_job(
         _safe_check_tracked,
         CronTrigger(
@@ -125,12 +123,27 @@ def init_scheduler():
         replace_existing=True,
     )
 
-    scheduler.start()
+
+def init_scheduler():
+    """初始化排程器"""
+    _register_jobs()
+    if not scheduler.running:
+        scheduler.start()
     logger.info(
         f"排程器已啟動 — "
         f"每日爬蟲: {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d}, "
+        f"回溯 {config.SCRAPE_LOOKBACK_DAYS} 天, "
         f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}"
     )
+
+
+def reschedule_jobs():
+    """重新載入排程（設定頁儲存後即時生效）"""
+    if not scheduler.running:
+        init_scheduler()
+        return
+    _register_jobs()
+    logger.info("排程已更新")
 
 
 def get_next_run_times() -> dict:

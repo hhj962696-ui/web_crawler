@@ -11,7 +11,7 @@
             <span class="settings-icon">🏷️</span>
             篩選關鍵字
         </h2>
-        <p class="settings-desc">僅擷取案名包含以下關鍵字的案件。留空則擷取全部。</p>
+        <p class="settings-desc">僅擷取<strong>案名或招標機關</strong>包含以下關鍵字的案件（OR 比對）。留空則擷取全部。</p>
 
         <div class="keyword-list" id="keywordList">
             {% for kw in keywords %}
@@ -34,7 +34,10 @@
             <span class="settings-icon">⏰</span>
             排程設定
         </h2>
-        <p class="settings-desc">設定每日自動爬蟲與追蹤檢查的執行時間。</p>
+        <p class="settings-desc">
+            設定每日自動爬蟲與追蹤檢查的執行時間。
+            爬蟲每次擷取近 <strong>{{ scrape_lookback_days }}</strong> 天（含今天）的公開徵求，以案號去重。
+        </p>
 
         <div class="form-group">
             <label class="form-label">每日爬蟲時間</label>
@@ -73,12 +76,18 @@
             <span class="settings-icon">💬</span>
             Discord 通知
         </h2>
-        <p class="settings-desc">Discord Webhook URL 用於推送爬蟲結果與追蹤通知。</p>
+        <p class="settings-desc">Discord Webhook URL 用於推送爬蟲結果與追蹤通知。請勿將 URL 提交至 Git。</p>
 
         <div class="form-group">
             <label class="form-label">Webhook URL</label>
-            <input type="password" id="webhookUrl" class="input" value="{{ webhook_masked }}" placeholder="https://discord.com/api/webhooks/...">
-            <button class="btn btn-ghost btn-small" onclick="toggleWebhookVisibility()" style="margin-top:8px">顯示/隱藏</button>
+            <input type="password" id="webhookUrl" class="input" value="" placeholder="https://discord.com/api/webhooks/...">
+            {% if webhook_configured %}
+            <p class="settings-hint">目前已設定：{{ webhook_masked }}</p>
+            {% endif %}
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+                <button class="btn btn-ghost btn-small" onclick="toggleWebhookVisibility()">顯示/隱藏</button>
+                <button class="btn btn-primary btn-small" onclick="saveWebhook()">儲存 Webhook</button>
+            </div>
         </div>
 
         <button class="btn btn-secondary" onclick="testWebhook()">
@@ -196,7 +205,7 @@ async function saveSchedule() {
         });
         const result = await resp.json();
         if (result.success) {
-            showToast('排程設定已儲存（需重啟生效）', 'success');
+            showToast('排程設定已儲存並已套用', 'success');
         } else {
             showToast('儲存失敗', 'error');
         }
@@ -219,6 +228,29 @@ async function testWebhook() {
 function toggleWebhookVisibility() {
     const input = document.getElementById('webhookUrl');
     input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveWebhook() {
+    const url = document.getElementById('webhookUrl').value.trim();
+    if (!url) {
+        showToast('請輸入 Webhook URL', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/settings/webhook', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({webhook_url: url}),
+        });
+        const data = await resp.json();
+        showToast(data.message, data.success ? 'success' : 'error');
+        if (data.success) {
+            document.getElementById('webhookUrl').value = '';
+            setTimeout(() => location.reload(), 800);
+        }
+    } catch (e) {
+        showToast('儲存失敗', 'error');
+    }
 }
 </script>
 {% endblock %}

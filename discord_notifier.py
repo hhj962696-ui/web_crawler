@@ -80,8 +80,11 @@ def _build_tender_embed(tender: dict) -> dict:
                 "inline": True,
             },
         ],
-        "timestamp": tender.get("scraped_at", ""),
     }
+
+    scraped_at = tender.get("scraped_at", "")
+    if scraped_at:
+        embed["timestamp"] = scraped_at
 
     # 加入連結
     url = tender.get("tender_url", "")
@@ -106,7 +109,7 @@ def send_new_tenders_notification(tenders: list[dict]) -> bool:
         return True
 
     total = len(tenders)
-    batch_size = 5
+    batch_size = config.DISCORD_EMBED_BATCH_SIZE
     success = True
 
     for i in range(0, total, batch_size):

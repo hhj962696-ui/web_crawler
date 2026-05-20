@@ -4,10 +4,12 @@
 """
 
 import logging
+import os
 import random
 import re
+import sys
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -33,6 +35,18 @@ from discord_notifier import (
 
 logger = logging.getLogger(__name__)
 
+# 追蹤狀態偵測優先序（先匹配較終態的狀態）
+TRACKED_STATUS_KEYWORDS = (
+    "已決標", "廢標", "流標", "已截止", "公開徵求", "已公告",
+)
+
+DETAIL_FIELD_LABELS = {
+    "contact_person": ("承辦人", "聯絡人", "聯絡窗口"),
+    "phone": ("電話", "聯絡電話", "分機"),
+    "budget": ("預算金額", "預算", "採購金額", "契約金額"),
+    "org_name": ("招標機關", "機關名稱", "採購機關"),
+}
+
 
 def _create_driver() -> webdriver.Chrome:
     """建立 Chrome WebDriver 實例"""
@@ -50,11 +64,21 @@ def _create_driver() -> webdriver.Chrome:
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     )
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option(
+        "excludeSwitches", ["enable-automation", "enable-logging"]
+    )
+    chrome_options.add_argument("--log-level=3")
+    chrome_options.add_argument("--ignore-certificate-errors")
 
-    service = Service(ChromeDriverManager().install())
+    proxy = config.HTTPS_PROXY or config.HTTP_PROXY
+    if proxy:
+        chrome_options.add_argument(f"--proxy-server={proxy}")
+        logger.info(f"使用 Proxy: {proxy}")
+
+    log_path = "NUL" if sys.platform == "win32" else os.devnull
+    service = Service(ChromeDriverManager().install(), log_output=log_path)
     driver = webdriver.Chrome(service=service, options=chrome_options)
-    driver.set_page_load_timeout(60)
+    driver.set_page_load_timeout(config.PAGE_LOAD_TIMEOUT)
     driver.implicitly_wait(10)
     return driver
 
@@ -87,6 +111,129 @@ def _build_search_url(start_date: str, end_date: str) -> str:
     }
     query = "&".join(f"{k}={v}" for k, v in params.items())
     return f"{config.PCC_SEARCH_URL}?{query}"
+
+
+def _get_scrape_date_range(
+    custom_start_date: str = None,
+    custom_end_date: str = None,
+) -> tuple[str, str]:
+    """取得爬蟲日期區間（YYYY/MM/DD）"""
+    today = date.today()
+    if custom_start_date and custom_end_date:
+        return custom_start_date, custom_end_date
+
+    lookback = config.SCRAPE_LOOKBACK_DAYS
+    start = today - timedelta(days=lookback - 1)
+    return start.strftime("%Y/%m/%d"), today.strftime("%Y/%m/%d")
+
+
+def _dedupe_tenders(tenders: list[dict]) -> list[dict]:
+    """以案號去重，保留資訊較完整的版本"""
+    by_id: dict[str, dict] = {}
+    no_id: list[dict] = []
+
+    for tender in tenders:
+        tid = tender.get("tender_id", "").strip()
+        if not tid:
+            no_id.append(tender)
+            continue
+
+        existing = by_id.get(tid)
+        if not existing:
+            by_id[tid] = tender
+            continue
+
+        for field in ("tender_name", "org_name", "contact_person", "phone", "budget", "tender_url"):
+            if not existing.get(field) and tender.get(field):
+                existing[field] = tender[field]
+
+    return list(by_id.values()) + no_id
+
+
+def _needs_detail_enrichment(tender: dict) -> bool:
+    """列表頁欄位不足時進詳情頁補抓"""
+    return not all(
+        tender.get(f, "").strip()
+        for f in ("contact_person", "phone", "budget")
+    )
+
+
+def _label_matches(label: str, keywords: tuple[str, ...]) -> bool:
+    return any(kw in label for kw in keywords)
+
+
+def _parse_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
+    """從詳情頁表格 th/td 配對解析欄位"""
+    parsed: dict[str, str] = {}
+
+    for table in soup.find_all("table"):
+        for row in table.find_all("tr"):
+            cells = row.find_all(["th", "td"])
+            if len(cells) < 2:
+                continue
+            label = cells[0].get_text(strip=True)
+            value = cells[-1].get_text(strip=True)
+            if not label or not value:
+                continue
+
+            for field, labels in DETAIL_FIELD_LABELS.items():
+                if _label_matches(label, labels):
+                    parsed[field] = value
+
+    return parsed
+
+
+def _extract_status_from_soup(soup: BeautifulSoup) -> str:
+    """從詳情頁擷取案件狀態（依優先序）"""
+    page_text = soup.get_text(" ", strip=True)
+    for keyword in TRACKED_STATUS_KEYWORDS:
+        if keyword in page_text:
+            return keyword
+    return ""
+
+
+def _parse_detail_page(page_source: str) -> dict:
+    """解析詳情頁補充欄位與狀態"""
+    soup = BeautifulSoup(page_source, "html.parser")
+    fields = _parse_label_value_pairs(soup)
+    status = _extract_status_from_soup(soup)
+    if status:
+        fields["status"] = status
+    return fields
+
+
+def _load_detail_page(driver: webdriver.Chrome, url: str) -> str:
+    """載入詳情頁並回傳 HTML"""
+    driver.get(url)
+    _random_delay(2, 4)
+    WebDriverWait(driver, 15).until(
+        lambda d: d.execute_script("return document.readyState") == "complete"
+    )
+    return driver.page_source
+
+
+def _enrich_tender_from_detail(driver: webdriver.Chrome, tender: dict) -> dict:
+    """進入詳情頁補齊承辦人、電話、預算等欄位"""
+    url = tender.get("tender_url", "").strip()
+    if not url:
+        return tender
+
+    try:
+        page_source = _load_detail_page(driver, url)
+        detail = _parse_detail_page(page_source)
+
+        for field in ("contact_person", "phone", "budget", "org_name", "status"):
+            value = detail.get(field, "").strip()
+            if value and not tender.get(field, "").strip():
+                tender[field] = value
+
+        if not tender.get("status"):
+            tender["status"] = detail.get("status") or "公開徵求"
+
+    except Exception as e:
+        logger.warning(f"詳情頁補抓失敗 [{tender.get('tender_id')}]: {e}")
+
+    return tender
 
 
 def _parse_table_rows(page_source: str) -> list[dict]:
@@ -226,18 +373,22 @@ def run_scraper(
     result = {"success": False, "new_count": 0, "updated_count": 0, "total_found": 0, "error": ""}
 
     try:
+        from network_check import check_pcc_network
+
+        net = check_pcc_network()
+        if not net["ok"]:
+            raise ConnectionError(
+                f"{net['message']}。{net.get('detail', '')} "
+                "請先用「python scripts/cli.py check-network」診斷，"
+                "或於瀏覽器手動開啟 https://web.pcc.gov.tw 確認能否連線。"
+            )
+
         # 建立 WebDriver
         logger.info(f"[{scrape_type}] 開始執行爬蟲...")
         driver = _create_driver()
 
-        # 設定日期
-        today = date.today()
-        if custom_start_date and custom_end_date:
-            start_date = custom_start_date
-            end_date = custom_end_date
-        else:
-            start_date = today.strftime("%Y/%m/%d")
-            end_date = today.strftime("%Y/%m/%d")
+        start_date, end_date = _get_scrape_date_range(custom_start_date, custom_end_date)
+        logger.info(f"爬取日期區間: {start_date} ~ {end_date}（回溯 {config.SCRAPE_LOOKBACK_DAYS} 天）")
 
         # 嘗試重試機制
         all_tenders_raw = []
@@ -329,6 +480,9 @@ def run_scraper(
                     continue
                 raise
 
+        all_tenders_raw = _dedupe_tenders(all_tenders_raw)
+        logger.info(f"去重後共 {len(all_tenders_raw)} 筆")
+
         # 關鍵字篩選
         if use_filter and config.FILTER_KEYWORDS:
             filtered = [t for t in all_tenders_raw if _matches_keywords(t, config.FILTER_KEYWORDS)]
@@ -338,8 +492,8 @@ def run_scraper(
 
         result["total_found"] = len(filtered)
 
-        # 寫入資料庫（去重）
-        new_tenders = []
+        # 分離新案與既有案
+        new_candidates: list[dict] = []
         updated_tenders = 0
         for tender_data in filtered:
             tid = tender_data.get("tender_id", "").strip()
@@ -348,7 +502,6 @@ def run_scraper(
 
             existing = db.query(Tender).filter_by(tender_id=tid).first()
             if existing:
-                # 更新已有記錄（如果狀態有變）
                 changed = False
                 for field in ["tender_name", "org_name", "contact_person", "phone", "budget", "tender_url"]:
                     new_val = tender_data.get(field, "").strip()
@@ -359,22 +512,32 @@ def run_scraper(
                     existing.updated_at = datetime.now()
                     updated_tenders += 1
             else:
-                # 新案件
-                new_tender = Tender(
-                    tender_id=tid,
-                    tender_name=tender_data.get("tender_name", "").strip(),
-                    org_name=tender_data.get("org_name", "").strip(),
-                    contact_person=tender_data.get("contact_person", "").strip(),
-                    phone=tender_data.get("phone", "").strip(),
-                    budget=tender_data.get("budget", "").strip(),
-                    tender_url=tender_data.get("tender_url", "").strip(),
-                    status="公開徵求",
-                    scraped_at=datetime.now(),
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
-                )
-                db.add(new_tender)
-                new_tenders.append(tender_data)
+                tender_data.setdefault("status", "公開徵求")
+                new_candidates.append(tender_data)
+
+        # 新案進詳情頁補抓後再入庫
+        new_tenders: list[dict] = []
+        scraped_at = datetime.now().isoformat()
+        for tender_data in new_candidates:
+            if _needs_detail_enrichment(tender_data):
+                _enrich_tender_from_detail(driver, tender_data)
+
+            tid = tender_data.get("tender_id", "").strip()
+            db.add(Tender(
+                tender_id=tid,
+                tender_name=tender_data.get("tender_name", "").strip(),
+                org_name=tender_data.get("org_name", "").strip(),
+                contact_person=tender_data.get("contact_person", "").strip(),
+                phone=tender_data.get("phone", "").strip(),
+                budget=tender_data.get("budget", "").strip(),
+                tender_url=tender_data.get("tender_url", "").strip(),
+                status=tender_data.get("status", "公開徵求") or "公開徵求",
+                scraped_at=datetime.now(),
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            ))
+            tender_data["scraped_at"] = scraped_at
+            new_tenders.append(tender_data)
 
         db.commit()
         result["new_count"] = len(new_tenders)
@@ -459,12 +622,15 @@ def check_tracked_tenders() -> dict:
 
                 page_source = driver.page_source
                 soup = BeautifulSoup(page_source, "html.parser")
+                detail = _parse_detail_page(page_source)
 
-                # 在詳細頁面尋找狀態資訊
-                status_text = ""
-                for text_elem in soup.find_all(string=re.compile(r"(已決標|公開徵求|已截止|廢標|流標|已公告)")):
-                    status_text = text_elem.strip()
-                    break
+                # 順便更新詳情欄位
+                for field in ("contact_person", "phone", "budget", "org_name"):
+                    value = detail.get(field, "").strip()
+                    if value and value != getattr(tender, field, ""):
+                        setattr(tender, field, value)
+
+                status_text = detail.get("status") or _extract_status_from_soup(soup)
 
                 if status_text and status_text != tender.status:
                     old_status = tender.status

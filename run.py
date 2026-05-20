@@ -71,6 +71,7 @@ def check_env():
 
     print(f"\n  Keywords : {', '.join(config.FILTER_KEYWORDS)}")
     print(f"  Schedule : {config.SCRAPE_SCHEDULE_HOUR:02d}:{config.SCRAPE_SCHEDULE_MINUTE:02d} daily")
+    print(f"  Lookback : {config.SCRAPE_LOOKBACK_DAYS} day(s)")
     print(f"  Tracking : {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d} daily")
     print(f"  Discord  : {'configured' if config.DISCORD_WEBHOOK_URL else 'not set'}")
     print(f"  Web UI   : http://{config.APP_HOST}:{config.APP_PORT}")

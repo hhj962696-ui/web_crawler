@@ -3,15 +3,17 @@ FastAPI 主應用程式
 提供 Web UI 與 API 路由
 """
 
-import os
+import csv
+import io
 import logging
 from datetime import datetime, date
 from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
@@ -19,7 +21,7 @@ from config import config
 from models import init_db, get_db, Tender, ScrapeLog, SessionLocal
 from scheduler import (
     manual_run_scraper, manual_check_tracked,
-    is_scraper_running, get_next_run_times,
+    is_scraper_running, get_next_run_times, reschedule_jobs,
 )
 from discord_notifier import send_test_notification
 
@@ -145,6 +147,8 @@ async def settings_page(request: Request):
                 "track_hour": config.TRACK_CHECK_HOUR,
                 "track_minute": config.TRACK_CHECK_MINUTE,
             },
+            "scrape_lookback_days": config.SCRAPE_LOOKBACK_DAYS,
+            "webhook_configured": bool(config.DISCORD_WEBHOOK_URL),
             "next_runs": next_runs,
             "webhook_masked": webhook_masked,
             "scrape_logs": [log.to_dict() for log in scrape_logs],
@@ -343,9 +347,79 @@ async def api_update_schedule(request: Request):
         config.TRACK_CHECK_HOUR = int(body.get("track_hour", config.TRACK_CHECK_HOUR))
         config.TRACK_CHECK_MINUTE = int(body.get("track_minute", config.TRACK_CHECK_MINUTE))
         _save_schedule_to_env()
-        return {"success": True, "message": "排程設定已儲存（重啟後生效）"}
+        reschedule_jobs()
+        return {"success": True, "message": "排程設定已儲存並已套用"}
     except (ValueError, TypeError) as e:
         return {"success": False, "message": f"無效的時間設定: {e}"}
+
+
+@app.put("/api/settings/webhook")
+async def api_update_webhook(request: Request):
+    """更新 Discord Webhook URL"""
+    body = await request.json()
+    url = body.get("webhook_url", "").strip()
+    if not url:
+        return {"success": False, "message": "Webhook URL 不能為空"}
+    if "discord.com/api/webhooks" not in url and "discordapp.com/api/webhooks" not in url:
+        return {"success": False, "message": "請輸入有效的 Discord Webhook URL"}
+
+    config.DISCORD_WEBHOOK_URL = url
+    _ensure_env_file()
+    _update_env_value("DISCORD_WEBHOOK_URL", url)
+    return {"success": True, "message": "Webhook 已儲存"}
+
+
+@app.get("/api/export/csv")
+async def api_export_csv(
+    tracked: str = None,
+    status: str = None,
+    search: str = None,
+):
+    """匯出案件 CSV（UTF-8 BOM，Excel 可直接開啟）"""
+    db = SessionLocal()
+    try:
+        query = db.query(Tender).order_by(desc(Tender.created_at))
+
+        if tracked == "true":
+            query = query.filter(Tender.is_tracked == True)
+        if status:
+            query = query.filter(Tender.status == status)
+        if search:
+            pattern = f"%{search}%"
+            query = query.filter(
+                (Tender.tender_name.like(pattern)) |
+                (Tender.tender_id.like(pattern)) |
+                (Tender.org_name.like(pattern))
+            )
+
+        tenders = query.all()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "案號", "案名", "招標機關", "承辦人", "電話", "預算金額",
+            "狀態", "連結", "是否追蹤", "備註", "爬取時間", "建立時間",
+        ])
+        for t in tenders:
+            d = t.to_dict()
+            writer.writerow([
+                d["tender_id"], d["tender_name"], d["org_name"],
+                d["contact_person"], d["phone"], d["budget"],
+                d["status"], d["tender_url"],
+                "是" if d["is_tracked"] else "否",
+                d["track_note"], d["scraped_at"], d["created_at"],
+            ])
+
+        filename = f"tenders_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        content = "\ufeff" + output.getvalue()
+        return StreamingResponse(
+            iter([content.encode("utf-8")]),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+            },
+        )
+    finally:
+        db.close()
 
 
 @app.post("/api/settings/test-webhook")
@@ -359,6 +433,22 @@ async def api_test_webhook():
 
 
 # === 工具函式 ===
+def _read_env_lines(env_path: Path) -> list[str]:
+    """以 UTF-8 讀取 .env（相容含 BOM 的檔案）"""
+    raw = env_path.read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    return raw.decode("utf-8").splitlines()
+
+
+def _ensure_env_file():
+    """若無 .env 則從範例建立"""
+    env_path = config.BASE_DIR / ".env"
+    example_path = config.BASE_DIR / ".env.example"
+    if not env_path.exists() and example_path.exists():
+        env_path.write_text(example_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+
 def _save_keywords_to_env():
     """將關鍵字儲存到 .env 檔案"""
     _update_env_value("FILTER_KEYWORDS", ",".join(config.FILTER_KEYWORDS))
@@ -374,11 +464,12 @@ def _save_schedule_to_env():
 
 def _update_env_value(key: str, value: str):
     """更新 .env 檔案中的特定鍵值"""
+    _ensure_env_file()
     env_path = config.BASE_DIR / ".env"
     if not env_path.exists():
         return
 
-    lines = env_path.read_text(encoding="utf-8").splitlines()
+    lines = _read_env_lines(env_path)
     updated = False
     for i, line in enumerate(lines):
         if line.strip().startswith(f"{key}="):
@@ -389,4 +480,4 @@ def _update_env_value(key: str, value: str):
     if not updated:
         lines.append(f"{key}={value}")
 
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    env_path.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
