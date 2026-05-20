@@ -25,7 +25,9 @@ from scraper import (
     _dedupe_tenders,
     _matches_keywords,
     _needs_detail_enrichment,
-    _enrich_tender_from_detail,
+    _should_overwrite_field,
+    _phone_field_is_corrupt,
+    _sanitize_phone_for_storage,
     _parse_detail_page,
     _load_detail_page,
 )
@@ -231,7 +233,13 @@ def _enrich_bidding_from_detail(driver, tender: dict) -> dict:
         detail = _parse_detail_page(page_source)
         for field in ("tender_name", "contact_person", "phone", "budget", "org_name"):
             value = detail.get(field, "").strip()
-            if value and not tender.get(field, "").strip():
+            if not value:
+                continue
+            existing = tender.get(field, "").strip()
+            if field == "phone":
+                if _should_overwrite_field("phone", existing, value):
+                    tender[field] = value
+            elif not existing:
                 tender[field] = value
         if not tender.get("status"):
             tender["status"] = detail.get("status") or BIDDING_STATUS
@@ -276,6 +284,8 @@ def _upsert_bidding_row(db, tender_data: dict, scraped_now) -> tuple[bool, bool]
             "tender_url", "status", "proctrg_cate", "bid_deadline", "tender_way",
         ):
             new_val = tender_data.get(field, "").strip()
+            if field == "phone" and new_val:
+                new_val = _sanitize_phone_for_storage(new_val)
             if new_val and new_val != getattr(existing, field, ""):
                 setattr(existing, field, new_val)
                 changed = True
@@ -288,7 +298,7 @@ def _upsert_bidding_row(db, tender_data: dict, scraped_now) -> tuple[bool, bool]
         tender_name=tender_data.get("tender_name", "").strip(),
         org_name=tender_data.get("org_name", "").strip(),
         contact_person=tender_data.get("contact_person", "").strip(),
-        phone=tender_data.get("phone", "").strip(),
+        phone=_sanitize_phone_for_storage(tender_data.get("phone", "")),
         budget=tender_data.get("budget", "").strip(),
         tender_url=tender_data.get("tender_url", "").strip(),
         status=tender_data.get("status", BIDDING_STATUS) or BIDDING_STATUS,
@@ -487,6 +497,81 @@ def run_bidding_scraper(
         db.commit()
         send_bidding_error_notification(f"爬蟲類型: {scrape_type}\n錯誤: {error_msg}")
 
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        db.close()
+
+    return result
+
+
+def enrich_bidding_contacts(limit: int = None) -> dict:
+    """為 bidding_tenders 補抓或修正承辦人/電話"""
+    db = SessionLocal()
+    driver = None
+    result = {
+        "success": False,
+        "enriched": 0,
+        "skipped": 0,
+        "failed": 0,
+        "no_url": 0,
+        "error": "",
+    }
+
+    try:
+        tenders = db.query(BiddingTender).all()
+        targets = [t for t in tenders if _needs_detail_enrichment(t.to_dict())]
+        if limit:
+            targets = targets[:limit]
+
+        if not targets:
+            logger.info("沒有需要補抓的公開招標案件")
+            result["success"] = True
+            return result
+
+        logger.info(f"開始補抓 {len(targets)} 筆公開招標聯絡資料...")
+        driver = _create_driver()
+
+        for tender in targets:
+            if not tender.tender_url:
+                result["no_url"] += 1
+                continue
+            data = tender.to_dict()
+            try:
+                _enrich_bidding_from_detail(driver, data)
+                changed = False
+                for field in ["tender_name", "contact_person", "phone", "budget", "org_name"]:
+                    val = data.get(field, "").strip()
+                    if field == "phone" and val:
+                        val = _sanitize_phone_for_storage(val)
+                    if val and getattr(tender, field, "") != val:
+                        setattr(tender, field, val)
+                        changed = True
+                if changed:
+                    tender.updated_at = datetime.now()
+                    result["enriched"] += 1
+                    logger.info(
+                        f"已補抓 {tender.tender_id}: "
+                        f"{tender.contact_person} / {tender.phone}"
+                    )
+                else:
+                    result["skipped"] += 1
+            except Exception as e:
+                result["failed"] += 1
+                logger.warning(f"補抓失敗 [{tender.tender_id}]: {e}")
+
+        db.commit()
+        result["success"] = True
+        logger.info(
+            f"公開招標補抓完成 — 成功 {result['enriched']}, "
+            f"略過 {result['skipped']}, 無連結 {result['no_url']}, 失敗 {result['failed']}"
+        )
+    except Exception as e:
+        result["error"] = str(e)
+        logger.error(f"公開招標補抓失敗: {e}", exc_info=True)
     finally:
         if driver:
             try:

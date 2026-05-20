@@ -16,6 +16,9 @@ load_dotenv(_ENV_PATH, encoding="utf-8")
 class Config:
     """全域設定"""
 
+    # 專案根目錄（與模組層級 BASE_DIR 相同，供 app 寫入 .env 等）
+    BASE_DIR = BASE_DIR
+
     # 基本路徑（Docker 可設 DATA_DIR=/app/data 持久化資料庫與日誌）
     DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
     DB_PATH = DATA_DIR / "database.db"

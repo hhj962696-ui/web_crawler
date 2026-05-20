@@ -52,6 +52,88 @@ DETAIL_FIELD_LABELS = {
 
 DETAIL_URL_MARKERS = ("urlSelector/common/tpAppeal", "readTpAppeal")
 
+# 台灣市話（須含區碼）或手機；避免誤抓純郵遞區號
+_PHONE_EXTRACT_RE = re.compile(
+    r"\(0\d{1,2}\)\s*[-－]?\s*\d{3,4}\s*[-－]?\s*\d{4}(?:\s*[#＃]\s*\d+)?"
+    r"|0\d{1,2}[-－]\d{3,4}[-－]?\d{4}(?:\s*[#＃]\s*\d+)?"
+    r"|09\d{8}"
+)
+# 明顯非電話內容（投標須知、地址等）
+_PHONE_REJECT_KEYWORDS = (
+    "投標", "郵遞", "收受", "現場", "http", "https", "【", "】",
+    "廠商", "憑證", "ODF", "行政院", "採購法", "領標", "押標金",
+    "開標", "決標", "注意事項", "說明", "地址",
+)
+_MAX_PHONE_LEN = 35
+_PHONE_LABELS_EXACT = ("電話", "聯絡電話", "聯絡電話號碼", "聯絡傳真")
+
+
+def _phone_field_is_corrupt(text: str) -> bool:
+    """判斷已儲存的電話是否像誤抓的長文本"""
+    text = (text or "").strip()
+    if not text:
+        return False
+    if len(text) > _MAX_PHONE_LEN:
+        return True
+    if any(kw in text for kw in _PHONE_REJECT_KEYWORDS):
+        return True
+    if text.count("。") >= 2 or text.count("；") >= 2:
+        return True
+    return False
+
+
+def _extract_phone(text: str) -> str:
+    """從欄位文字抽出單一電話號碼；抽不到則回傳空字串"""
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if not text:
+        return ""
+
+    match = _PHONE_EXTRACT_RE.search(text)
+    if not match:
+        return ""
+
+    phone = re.sub(r"\s+", " ", match.group(0).strip())
+
+    compact = re.sub(r"\s+", "", text)
+    if (
+        len(text) <= _MAX_PHONE_LEN
+        and not _phone_field_is_corrupt(text)
+        and _PHONE_EXTRACT_RE.fullmatch(compact)
+    ):
+        return text
+
+    if _phone_field_is_corrupt(text):
+        return phone
+
+    if len(text) <= _MAX_PHONE_LEN and not any(kw in text for kw in _PHONE_REJECT_KEYWORDS):
+        return phone if len(phone) >= len(text) * 0.5 else text
+
+    return phone
+
+
+def _sanitize_phone_for_storage(phone: str) -> str:
+    """寫入資料庫前的電話正規化"""
+    phone = (phone or "").strip()
+    if not phone:
+        return ""
+    if not _phone_field_is_corrupt(phone):
+        return phone
+    return _extract_phone(phone)
+
+
+def _label_matches_phone(label: str) -> bool:
+    """電話欄位標籤比對（避免誤配到說明列）"""
+    label = (label or "").strip()
+    if not label:
+        return False
+    if label in _PHONE_LABELS_EXACT:
+        return True
+    if label.endswith("電話") and len(label) <= 10 and "傳真" not in label:
+        return True
+    if label == "分機" and len(label) <= 4:
+        return True
+    return False
+
 
 def _create_driver() -> webdriver.Chrome:
     """建立 Chrome WebDriver 實例"""
@@ -162,7 +244,9 @@ def _dedupe_tenders(tenders: list[dict]) -> list[dict]:
 
 
 def _needs_detail_enrichment(tender: dict) -> bool:
-    """列表頁欄位不足時進詳情頁補抓"""
+    """列表頁欄位不足或電話異常時進詳情頁補抓"""
+    if _phone_field_is_corrupt(tender.get("phone", "")):
+        return True
     return not all(
         tender.get(f, "").strip()
         for f in ("contact_person", "phone", "budget")
@@ -174,10 +258,23 @@ def _label_matches(label: str, keywords: tuple[str, ...]) -> bool:
 
 
 def _assign_detail_field(parsed: dict[str, str], field: str, value: str):
-    """寫入詳情欄位（保留較長/較完整的值）"""
+    """寫入詳情欄位"""
     value = (value or "").strip()
     if not value or value in ("-", "無", "N/A"):
         return
+
+    if field == "phone":
+        cleaned = _extract_phone(value)
+        if not cleaned:
+            return
+        existing = parsed.get("phone", "")
+        if not existing or _phone_field_is_corrupt(existing):
+            parsed[field] = cleaned
+        elif len(cleaned) < len(existing) and not _phone_field_is_corrupt(cleaned):
+            parsed[field] = cleaned
+        return
+
+    # 其他欄位：保留較長/較完整的值
     if field not in parsed or len(value) > len(parsed.get(field, "")):
         parsed[field] = value
 
@@ -196,7 +293,11 @@ def _parse_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
             if len(cells) == 2:
                 label = cells[0].get_text(strip=True)
                 value = cells[1].get_text(strip=True)
+                if _label_matches_phone(label):
+                    _assign_detail_field(parsed, "phone", value)
                 for field, labels in DETAIL_FIELD_LABELS.items():
+                    if field == "phone":
+                        continue
                     if _label_matches(label, labels):
                         _assign_detail_field(parsed, field, value)
                 continue
@@ -207,22 +308,26 @@ def _parse_label_value_pairs(soup: BeautifulSoup) -> dict[str, str]:
                 label = cells[i].get_text(strip=True)
                 value = cells[i + 1].get_text(strip=True)
                 matched = False
+                if _label_matches_phone(label):
+                    _assign_detail_field(parsed, "phone", value)
+                    matched = True
                 for field, labels in DETAIL_FIELD_LABELS.items():
+                    if field == "phone":
+                        continue
                     if _label_matches(label, labels):
                         _assign_detail_field(parsed, field, value)
                         matched = True
                         break
                 i += 2 if matched else 1
 
-    # 備援：從全文找電話格式
-    if "phone" not in parsed:
+    # 備援：僅在尚無電話時，從全文擷取第一組合理市話
+    if "phone" not in parsed or _phone_field_is_corrupt(parsed.get("phone", "")):
         page_text = soup.get_text(" ", strip=True)
-        phone_match = re.search(
-            r"(?:\(0\d{1,2}\)|0\d{1,2}[-－])?\d{6,8}(?:#\d+)?",
-            page_text,
-        )
-        if phone_match:
-            parsed["phone"] = phone_match.group(0)
+        for m in _PHONE_EXTRACT_RE.finditer(page_text):
+            candidate = m.group(0).strip()
+            if len(candidate) <= _MAX_PHONE_LEN:
+                parsed["phone"] = candidate
+                break
 
     return parsed
 
@@ -280,6 +385,17 @@ def _load_detail_page(driver: webdriver.Chrome, url: str) -> str:
     return driver.page_source
 
 
+def _should_overwrite_field(field: str, existing: str, new_val: str) -> bool:
+    """是否以詳情頁新值覆寫既有欄位"""
+    if not new_val:
+        return False
+    if not existing:
+        return True
+    if field == "phone" and _phone_field_is_corrupt(existing):
+        return True
+    return False
+
+
 def _enrich_tender_from_detail(driver: webdriver.Chrome, tender: dict) -> dict:
     """進入詳情頁補齊承辦人、電話、預算等欄位"""
     url = tender.get("tender_url", "").strip()
@@ -292,7 +408,13 @@ def _enrich_tender_from_detail(driver: webdriver.Chrome, tender: dict) -> dict:
 
         for field in ("tender_name", "contact_person", "phone", "budget", "org_name", "status"):
             value = detail.get(field, "").strip()
-            if value and not tender.get(field, "").strip():
+            if not value:
+                continue
+            existing = tender.get(field, "").strip()
+            if field == "phone":
+                if _should_overwrite_field("phone", existing, value):
+                    tender[field] = value
+            elif not existing:
                 tender[field] = value
 
         if not tender.get("status"):
@@ -610,7 +732,7 @@ def run_scraper(
                 tender_name=tender_data.get("tender_name", "").strip(),
                 org_name=tender_data.get("org_name", "").strip(),
                 contact_person=tender_data.get("contact_person", "").strip(),
-                phone=tender_data.get("phone", "").strip(),
+                phone=_sanitize_phone_for_storage(tender_data.get("phone", "")),
                 budget=tender_data.get("budget", "").strip(),
                 tender_url=tender_data.get("tender_url", "").strip(),
                 status=tender_data.get("status", "公開徵求") or "公開徵求",
@@ -745,6 +867,57 @@ def enrich_missing_contacts(limit: int = None) -> dict:
                 driver.quit()
             except Exception:
                 pass
+        db.close()
+
+    return result
+
+
+def repair_stored_phones() -> dict:
+    """
+    就地修正資料庫中已存但格式異常的電話（不需重新爬蟲）。
+    同時處理 tenders 與 bidding_tenders。
+    """
+    from models import BiddingTender
+
+    db = SessionLocal()
+    result = {
+        "success": True,
+        "tenders_fixed": 0,
+        "bidding_fixed": 0,
+        "tenders_cleared": 0,
+        "bidding_cleared": 0,
+    }
+
+    try:
+        for model, fixed_key, cleared_key in (
+            (Tender, "tenders_fixed", "tenders_cleared"),
+            (BiddingTender, "bidding_fixed", "bidding_cleared"),
+        ):
+            for row in db.query(model).all():
+                old = (row.phone or "").strip()
+                if not old or not _phone_field_is_corrupt(old):
+                    continue
+                new = _sanitize_phone_for_storage(old)
+                if new == old:
+                    continue
+                row.phone = new
+                row.updated_at = datetime.now()
+                if new:
+                    result[fixed_key] += 1
+                else:
+                    result[cleared_key] += 1
+                logger.info(f"電話修正 [{row.tender_id}]: {len(old)} 字 → {new or '(清空)'}")
+
+        db.commit()
+        logger.info(
+            f"電話修正完成 — 徵求 {result['tenders_fixed']} 筆, "
+            f"招標 {result['bidding_fixed']} 筆"
+        )
+    except Exception as e:
+        result["success"] = False
+        result["error"] = str(e)
+        logger.error(f"電話修正失敗: {e}", exc_info=True)
+    finally:
         db.close()
 
     return result

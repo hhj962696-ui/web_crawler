@@ -228,16 +228,53 @@ def cmd_scrape(args):
     return 0 if result.get("success") else 1
 
 
-def cmd_enrich(_args):
-    from scraper import enrich_missing_contacts
+def cmd_repair_phones(_args):
+    from scraper import repair_stored_phones
 
-    print("補抓承辦人/電話（需已存有詳情頁連結）...")
+    print("修正資料庫中異常電話欄位（公開徵求 + 公開招標）...")
+    result = repair_stored_phones()
+    print("\n=== 電話修正結果 ===")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    total = result.get("tenders_fixed", 0) + result.get("bidding_fixed", 0)
+    if total:
+        print("\n請重新整理瀏覽器頁面查看更新。")
+    return 0 if result.get("success") else 1
+
+
+def cmd_enrich_bidding(_args):
+    from scraper import repair_stored_phones
+    from bidding_scraper import enrich_bidding_contacts
+
+    print("1/2 先修正已存異常電話...")
+    repair = repair_stored_phones()
+    print(f"   招標修正 {repair.get('bidding_fixed', 0)} 筆")
+
+    print("2/2 補抓公開招標詳情頁（承辦人/電話）...")
+    result = enrich_bidding_contacts()
+    print("\n=== 公開招標補抓結果 ===")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    if result.get("no_url"):
+        print("\n提示：若 no_url > 0，請先執行 scrape-bidding 更新連結")
+    print("\n請重新整理瀏覽器「公開招標」分頁查看更新。")
+    return 0 if result.get("success") else 1
+
+
+def cmd_enrich(_args):
+    from scraper import enrich_missing_contacts, repair_stored_phones
+
+    print("1/2 先修正已存異常電話...")
+    repair_stored_phones()
+
+    print("2/2 補抓公開徵求承辦人/電話（需已存有詳情頁連結）...")
     result = enrich_missing_contacts()
-    print("\n=== 補抓結果 ===")
+    print("\n=== 公開徵求補抓結果 ===")
     for k, v in result.items():
         print(f"  {k}: {v}")
     if result.get("no_url"):
         print("\n提示：若 no_url > 0，請先執行 python scripts/cli.py scrape 更新連結後再 enrich")
+    print("\n公開招標請改用: python scripts/cli.py enrich-bidding")
     return 0 if result.get("success") else 1
 
 
@@ -360,7 +397,12 @@ def main():
     p_bid.add_argument("--force", action="store_true", help="略過連線預檢")
     p_bid.set_defaults(func=cmd_scrape_bidding)
 
-    sub.add_parser("enrich", help="補抓既有案件的承辦人/電話").set_defaults(func=cmd_enrich)
+    sub.add_parser("repair-phones", help="修正資料庫異常電話（徵求+招標，不需爬蟲）").set_defaults(
+        func=cmd_repair_phones
+    )
+
+    sub.add_parser("enrich", help="補抓公開徵求承辦人/電話").set_defaults(func=cmd_enrich)
+    sub.add_parser("enrich-bidding", help="補抓公開招標承辦人/電話").set_defaults(func=cmd_enrich_bidding)
     sub.add_parser("check-tracked", help="檢查追蹤案件狀態").set_defaults(func=cmd_check_tracked)
 
     p_list = sub.add_parser("list", help="列出公開徵求案件")
