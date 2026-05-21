@@ -1,0 +1,1065 @@
+{% extends "base.html" %}
+
+{% block title %}業務中台儀表板 - 採購爬蟲系統{% endblock %}
+
+{% block page_title %}📊 業務中台儀表板{% endblock %}
+
+{% block content %}
+<style>
+    /* 玻璃擬態與排版樣式 */
+    .sales-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    
+    .glass-stats-container {
+        grid-column: span 12;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.5rem;
+    }
+
+    .glass-stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        box-shadow: var(--shadow-md);
+        position: relative;
+        overflow: hidden;
+        transition: all var(--transition-normal);
+        backdrop-filter: blur(10px);
+    }
+
+    .glass-stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent);
+        pointer-events: none;
+    }
+
+    .glass-stat-card:hover {
+        transform: translateY(-4px);
+        border-color: var(--border-glow);
+        box-shadow: var(--shadow-glow);
+    }
+
+    .glass-stat-icon {
+        font-size: 2.5rem;
+        background: var(--gradient-card);
+        width: 70px;
+        height: 70px;
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .glass-stat-info {
+        flex: 1;
+    }
+
+    .glass-stat-info h4 {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+    }
+
+    .glass-stat-info .stat-num {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+    }
+
+    /* 設備排行與快速動作 */
+    .sales-left-panel {
+        grid-column: span 4;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .sales-right-panel {
+        grid-column: span 8;
+    }
+
+    .dashboard-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        box-shadow: var(--shadow-md);
+        position: relative;
+        backdrop-filter: blur(10px);
+    }
+
+    .dashboard-card-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.75rem;
+        color: var(--text-primary);
+    }
+
+    /* 設備熱度排行條 */
+    .device-hot-item {
+        margin-bottom: 1rem;
+    }
+
+    .device-hot-info {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 0.4rem;
+        color: var(--text-secondary);
+    }
+
+    .device-hot-name {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .device-hot-count {
+        font-family: var(--font-mono);
+        color: var(--text-accent);
+    }
+
+    .device-hot-bar-bg {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .device-hot-bar-fill {
+        height: 100%;
+        background: var(--gradient-primary);
+        border-radius: 4px;
+        transition: width var(--transition-slow);
+    }
+
+    /* 動作區 */
+    .action-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .action-btn-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.85rem 1.2rem;
+        background: var(--bg-glass);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition-normal);
+        text-align: left;
+    }
+
+    .action-btn-custom:hover {
+        background: var(--bg-glass-hover);
+        border-color: var(--border-glow);
+        transform: translateX(4px);
+    }
+
+    .action-btn-icon {
+        font-size: 1.25rem;
+    }
+
+    /* 洞察表格與 Badge */
+    .score-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+    }
+
+    .score-high {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--accent-red);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .score-medium {
+        background: rgba(245, 158, 11, 0.15);
+        color: var(--accent-orange);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .score-low {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--accent-green);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    /* 決策 Drawer 抽屜面板 */
+    .drawer-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 200;
+        display: none;
+        backdrop-filter: blur(4px);
+        opacity: 0;
+        transition: opacity var(--transition-normal);
+    }
+
+    .drawer-overlay.active {
+        display: block;
+        opacity: 1;
+    }
+
+    .drawer-panel {
+        position: fixed;
+        top: 0;
+        right: -450px;
+        width: 450px;
+        height: 100vh;
+        background: var(--bg-secondary);
+        border-left: 1px solid var(--border-color);
+        box-shadow: var(--shadow-lg);
+        z-index: 201;
+        transition: right var(--transition-slow);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .drawer-panel.active {
+        right: 0;
+    }
+
+    .drawer-header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--bg-primary);
+    }
+
+    .drawer-header h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--text-primary);
+    }
+
+    .drawer-close {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 1.5rem;
+        cursor: pointer;
+        transition: color var(--transition-fast);
+    }
+
+    .drawer-close:hover {
+        color: var(--accent-red);
+    }
+
+    .drawer-body {
+        padding: 1.5rem;
+        flex: 1;
+    }
+
+    .drawer-section {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .drawer-section-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--text-accent);
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        padding-bottom: 0.5rem;
+    }
+
+    /* UI 元件微調 */
+    .slider-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .input-range {
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+        outline: none;
+        -webkit-appearance: none;
+    }
+
+    .input-range::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent-blue);
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        transition: transform var(--transition-fast);
+    }
+
+    .input-range::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+    }
+
+    .filter-bar {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-select {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: var(--radius-sm);
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+        outline: none;
+        cursor: pointer;
+    }
+
+    .filter-select:focus {
+        border-color: var(--border-glow);
+    }
+
+    .search-input-container {
+        position: relative;
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .search-input-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    .search-input-field {
+        width: 100%;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: var(--radius-sm);
+        padding: 0.4rem 0.75rem 0.4rem 2rem;
+        font-size: 0.85rem;
+        outline: none;
+    }
+
+    .search-input-field:focus {
+        border-color: var(--border-glow);
+    }
+
+    .matched-device-box {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        background: rgba(255,255,255,0.02);
+        padding: 0.75rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(255,255,255,0.05);
+    }
+</style>
+
+<!-- 總覽卡片 -->
+<div class="sales-grid">
+    <div class="glass-stats-container">
+        <!-- 卡片 1 -->
+        <div class="glass-stat-card">
+            <div class="glass-stat-icon" style="color: var(--accent-orange);">🔥</div>
+            <div class="glass-stat-info">
+                <h4>今日新進高潛力商機</h4>
+                <div class="stat-num" id="statTodayHigh">--</div>
+            </div>
+        </div>
+        <!-- 卡片 2 -->
+        <div class="glass-stat-card">
+            <div class="glass-stat-icon" style="color: var(--accent-blue);">⏳</div>
+            <div class="glass-stat-info">
+                <h4>待報價高潛力案件</h4>
+                <div class="stat-num" id="statPendingQuote">--</div>
+            </div>
+        </div>
+        <!-- 卡片 3 -->
+        <div class="glass-stat-card">
+            <div class="glass-stat-icon" style="color: var(--accent-green);">📈</div>
+            <div class="glass-stat-info">
+                <h4>本月已評估件數</h4>
+                <div class="stat-num" id="statMonthEvaluated">--</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="sales-grid">
+    <!-- 左側面板 -->
+    <div class="sales-left-panel">
+        <!-- 設備熱度計 -->
+        <div class="dashboard-card">
+            <div class="dashboard-card-title">🔥 最常推薦設備排行</div>
+            <div id="deviceHotList">
+                <div style="text-align: center; color: var(--text-muted); padding: 1rem;">計算中...</div>
+            </div>
+        </div>
+
+        <!-- 快速動作 -->
+        <div class="dashboard-card">
+            <div class="dashboard-card-title">⚡ 快速操作中台</div>
+            <div class="action-list">
+                <button class="action-btn-custom" onclick="syncContacts()">
+                    <span class="action-btn-icon">📇</span>
+                    <div>
+                        <div style="font-weight: 600;">一鍵同步通訊錄</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">提取新案承辦人建立客戶檔案</div>
+                    </div>
+                </button>
+                <button class="action-btn-custom" onclick="triggerDailySummaryPush()">
+                    <span class="action-btn-icon">📢</span>
+                    <div>
+                        <div style="font-weight: 600;">發送本日摘要推播</div>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">立即向 Discord 推送今日業務摘要</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右側面板：商機清單 -->
+    <div class="sales-right-panel dashboard-card">
+        <div class="dashboard-card-title">🎯 業務開發與報價評估</div>
+        
+        <!-- 篩選列 -->
+        <div class="filter-bar">
+            <!-- 搜尋框 -->
+            <div class="search-input-container">
+                <span class="search-input-icon">🔍</span>
+                <input type="text" id="searchKeyword" class="search-input-field" placeholder="搜尋機關或案號..." oninput="handleSearch()">
+            </div>
+            <!-- 篩選器 -->
+            <select id="filterPotential" class="filter-select" onchange="loadInsightsList()">
+                <option value="">所有潛力等級</option>
+                <option value="high">僅高潛力 (>= 50分)</option>
+            </select>
+            <select id="filterStatus" class="filter-select" onchange="loadInsightsList()">
+                <option value="">所有報價狀態</option>
+                <option value="pending_quote">僅待報價</option>
+            </select>
+            <select id="sortField" class="filter-select" onchange="loadInsightsList()">
+                <option value="score_desc">排序：潛力分數最高</option>
+                <option value="score_asc">排序：潛力分數最低</option>
+                <option value="budget_desc">排序：預算金額最高</option>
+                <option value="budget_asc">排序：預算金額最低</option>
+                <option value="time_desc">排序：最新建立</option>
+            </select>
+        </div>
+
+        <!-- 列表表格 -->
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>潛力</th>
+                        <th>機關</th>
+                        <th>案名</th>
+                        <th>預算</th>
+                        <th>主推設備</th>
+                        <th>建議標價</th>
+                        <th style="width: 100px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="insightsList">
+                    <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">載入中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分頁 -->
+        <div class="pagination" id="insightsPagination" style="margin-top: 1.5rem;"></div>
+    </div>
+</div>
+
+<!-- 決策微調 Drawer 面板 -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="drawer-panel" id="drawerPanel">
+    <div class="drawer-header">
+        <h3>🎯 決策評估與報價微調</h3>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+        <!-- 案件資訊卡 -->
+        <div class="drawer-section">
+            <div class="drawer-section-title">📋 標案資訊</div>
+            <div id="drawerTenderInfo" style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                <!-- 動態載入 -->
+            </div>
+        </div>
+
+        <!-- 模組 A 104 分析 -->
+        <div class="drawer-section">
+            <div class="drawer-section-title">🎯 104 人力需求分析</div>
+            <div id="drawerJobStats" style="font-size: 0.9rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                <!-- 動態載入 -->
+            </div>
+        </div>
+
+        <!-- 決策微調控制區 -->
+        <div class="drawer-section">
+            <div class="drawer-section-title">⚙️ 業務決策微調</div>
+            
+            <input type="hidden" id="drawerTenderId">
+
+            <!-- 微調估計人數 -->
+            <div class="slider-container">
+                <div class="device-hot-info">
+                    <span style="font-weight: 600; color: var(--text-primary);">預估需求人數</span>
+                    <span id="labelUsers" style="font-family: var(--font-mono); color: var(--text-accent); font-weight: 600;">50 人</span>
+                </div>
+                <input type="range" id="inputUsers" class="input-range" min="10" max="1000" step="10" value="50" oninput="updateUsersLabel(this.value)" onchange="triggerDeviceMatch()">
+                <div class="slider-labels">
+                    <span>10 人</span>
+                    <span>500 人</span>
+                    <span>1000 人</span>
+                </div>
+            </div>
+
+            <!-- 微調毛利率 -->
+            <div class="slider-container" style="margin-top: 1.5rem;">
+                <div class="device-hot-info">
+                    <span style="font-weight: 600; color: var(--text-primary);">預期毛利率</span>
+                    <span id="labelMargin" style="font-family: var(--font-mono); color: var(--text-accent); font-weight: 600;">15%</span>
+                </div>
+                <input type="range" id="inputMargin" class="input-range" min="0.05" max="0.50" step="0.01" value="0.15" oninput="updateMarginLabel(this.value)" onchange="triggerPriceCalculate()">
+                <div class="slider-labels">
+                    <span>5%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 設備推薦與報價產出區 -->
+        <div class="drawer-section" style="border-color: var(--accent-blue-glow);">
+            <div class="drawer-section-title" style="color: var(--text-accent);">🖥️ 匹配設備與標價推估</div>
+            
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div class="device-hot-info">
+                    <span>需求頻寬建議:</span>
+                    <strong id="drawerBandwidth" style="color: var(--text-primary); font-family: var(--font-mono);">-- Mbps</strong>
+                </div>
+
+                <div class="device-hot-info">
+                    <span>匹配主推設備:</span>
+                    <strong id="drawerPrimaryDevice" style="color: var(--text-primary);">--</strong>
+                </div>
+
+                <div class="matched-device-box">
+                    <div class="device-hot-info" style="margin-bottom:0.2rem;">
+                        <span style="font-size: 0.8rem;">設備型號:</span>
+                        <span id="boxModel" style="color:var(--text-primary); font-weight:600;">--</span>
+                    </div>
+                    <div class="device-hot-info" style="margin-bottom:0.2rem;">
+                        <span style="font-size: 0.8rem;">設備能力:</span>
+                        <span id="boxCapability" style="color:var(--text-primary);">--</span>
+                    </div>
+                    <div class="device-hot-info" style="margin-bottom:0.2rem;">
+                        <span style="font-size: 0.8rem;">設備成本:</span>
+                        <span id="boxCost" style="color:var(--accent-red); font-family: var(--font-mono); font-weight:600;">--</span>
+                    </div>
+                    <div class="device-hot-info" style="margin-bottom:0.2rem;">
+                        <span style="font-size: 0.8rem;">市場售價:</span>
+                        <span id="boxMarket" style="color:var(--accent-green); font-family: var(--font-mono);">--</span>
+                    </div>
+                </div>
+
+                <div class="device-hot-info" style="margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed rgba(255,255,255,0.05);">
+                    <span style="font-size: 1rem; font-weight:600; color:var(--text-primary);">建議最低標價:</span>
+                    <strong id="drawerSuggestedPrice" style="color: var(--accent-green); font-family: var(--font-mono); font-size: 1.25rem;">$0 元</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- 功能按鈕區 -->
+        <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem; margin-bottom: 2rem;">
+            <button class="btn btn-primary btn-glow" style="flex: 1;" onclick="pushSalesInsightToDiscord()">
+                🚀 推送至業務頻道
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let currentTenderIdForDrawer = "";
+    let searchTimeout = null;
+
+    // 頁面初始化
+    document.addEventListener("DOMContentLoaded", () => {
+        loadDashboardStats();
+        loadInsightsList();
+    });
+
+    // 載入儀表板總覽數據與排行
+    async function loadDashboardStats() {
+        try {
+            const resp = await fetch("/api/sales/dashboard");
+            const data = await resp.json();
+            
+            document.getElementById("statTodayHigh").textContent = data.today_high_potentials;
+            document.getElementById("statPendingQuote").textContent = data.pending_quotes;
+            document.getElementById("statMonthEvaluated").textContent = data.month_evaluated;
+
+            // 渲染設備排行
+            const rankList = document.getElementById("deviceHotList");
+            if (!data.top_devices || data.top_devices.length === 0) {
+                rankList.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">目前尚無分析的推薦型號</div>`;
+                return;
+            }
+
+            const maxCount = Math.max(...data.top_devices.map(d => d.count), 1);
+            rankList.innerHTML = data.top_devices.map(d => {
+                const percentage = Math.round((d.count / maxCount) * 100);
+                return `
+                    <div class="device-hot-item">
+                        <div class="device-hot-info">
+                            <span class="device-hot-name">🖥️ ${d.name}</span>
+                            <span class="device-hot-count">${d.count} 次推薦</span>
+                        </div>
+                        <div class="device-hot-bar-bg">
+                            <div class="device-hot-bar-fill" style="width: ${percentage}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            showToast("載入統計數據失敗", "error");
+        }
+    }
+
+    // 搜尋與篩選防抖處理
+    function handleSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            currentPage = 1;
+            loadInsightsList();
+        }, 300);
+    }
+
+    // 載入商機列表
+    async function loadInsightsList(page = 1) {
+        currentPage = page;
+        const search = document.getElementById("searchKeyword").value.trim();
+        const potential = document.getElementById("filterPotential").value;
+        const status = document.getElementById("filterStatus").value;
+        const sort = document.getElementById("sortField").value;
+
+        // 組裝查詢參數
+        let queryParams = new URLSearchParams({
+            page: page,
+            sort: sort
+        });
+        if (search) queryParams.append("search", search);
+        if (potential) queryParams.append("potential", potential);
+        if (status) queryParams.append("status", status);
+
+        const tbody = document.getElementById("insightsList");
+        try {
+            const resp = await fetch(`/api/sales/insights?${queryParams.toString()}`);
+            const data = await resp.json();
+
+            if (!data.insights || data.insights.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">無符合條件的業務洞察紀錄</td></tr>`;
+                document.getElementById("insightsPagination").innerHTML = "";
+                return;
+            }
+
+            tbody.innerHTML = data.insights.map(item => {
+                // 決定潛力 Badge 樣式
+                let scoreClass = "score-low";
+                if (item.remote_score >= 80) scoreClass = "score-high";
+                else if (item.remote_score >= 50) scoreClass = "score-medium";
+
+                // 解析主推設備名稱
+                let mainDevice = "—";
+                if (item.recommended_devices_json && item.recommended_devices_json !== "[]") {
+                    try {
+                        const devices = JSON.parse(item.recommended_devices_json);
+                        if (devices && devices.length > 0) {
+                            mainDevice = `<strong>${devices[0].brand}</strong> ${devices[0].model}`;
+                        }
+                    } catch(e) {}
+                }
+
+                // 建議標價格式化
+                let priceText = "⏳ 待估算";
+                if (item.suggested_bid_price && item.suggested_bid_price > 0) {
+                    priceText = `<strong style="color: var(--accent-green);">$${Number(item.suggested_bid_price).toLocaleString()} 元</strong>`;
+                }
+
+                return `
+                    <tr id="insight-row-${item.tender_id}">
+                        <td><span class="score-badge ${scoreClass}">${item.remote_score} 分</span></td>
+                        <td><span class="badge" style="background:#2c3e50; font-size: 0.75rem;">${item.org_name || '未知機關'}</span></td>
+                        <td>
+                            <div style="font-weight:600; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.tender_name}">
+                                ${item.tender_name}
+                            </div>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">案號: ${item.tender_id}</div>
+                        </td>
+                        <td><span style="color:#d2dae2; font-family:var(--font-mono);">${item.budget || '未公告'}</span></td>
+                        <td id="insight-device-${item.tender_id}">${mainDevice}</td>
+                        <td id="insight-price-${item.tender_id}">${priceText}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="openDrawer('${item.tender_id}')" style="background: linear-gradient(135deg, #3b82f6, #06b6d4);">決策微調</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            renderPagination(data.page, data.total_pages);
+        } catch (e) {
+            showToast("載入商機列表失敗", "error");
+        }
+    }
+
+    // 分頁渲染器
+    function renderPagination(current, total) {
+        const container = document.getElementById("insightsPagination");
+        if (total <= 1) {
+            container.innerHTML = "";
+            return;
+        }
+
+        let html = "";
+        // 上一頁
+        html += `<button class="btn btn-sm" ${current === 1 ? 'disabled' : ''} onclick="loadInsightsList(${current - 1})">◀</button>`;
+        
+        // 頁碼
+        for (let i = 1; i <= total; i++) {
+            if (i === current) {
+                html += `<button class="btn btn-sm btn-primary" disabled>${i}</button>`;
+            } else {
+                html += `<button class="btn btn-sm" onclick="loadInsightsList(${i})">${i}</button>`;
+            }
+        }
+
+        // 下一頁
+        html += `<button class="btn btn-sm" ${current === total ? 'disabled' : ''} onclick="loadInsightsList(${current + 1})">▶</button>`;
+        container.innerHTML = html;
+    }
+
+    // 展開決策面板
+    async function openDrawer(tenderId) {
+        currentTenderIdForDrawer = tenderId;
+        document.getElementById("drawerTenderId").value = tenderId;
+        
+        // 載入資料
+        try {
+            showLoading(true);
+            const resp = await fetch(`/api/insights/${tenderId}`);
+            const data = await resp.json();
+
+            if (!data.success) {
+                showToast("載入洞察資料失敗", "error");
+                return;
+            }
+
+            const ins = data.insight;
+            
+            // 查詢案名預算等
+            const rowEl = document.getElementById(`insight-row-${tenderId}`);
+            const tenderName = rowEl.querySelector("[title]").title;
+            const tenderBudget = rowEl.querySelectorAll("td")[3].textContent;
+
+            // 1. 渲染標案資訊
+            document.getElementById("drawerTenderInfo").innerHTML = `
+                <div><strong>標案案號:</strong> <span style="font-family:var(--font-mono);">${ins.tender_id}</span></div>
+                <div><strong>機關名稱:</strong> ${ins.org_name || '—'}</div>
+                <div><strong>案件案名:</strong> <span style="color:var(--text-primary);">${tenderName}</span></div>
+                <div><strong>公告預算:</strong> <span style="color:var(--accent-orange); font-family:var(--font-mono);">${tenderBudget}</span></div>
+            `;
+
+            // 2. 渲染 104 人力需求分析
+            document.getElementById("drawerJobStats").innerHTML = `
+                <div style="display:flex; justify-content:space-between;">
+                    <span>遠端潛力評分:</span>
+                    <strong style="color:var(--text-accent);">${ins.remote_score} 分</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span>遠端職缺總數:</span>
+                    <span>${ins.remote_job_count} 筆</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span>網管 MIS 職缺:</span>
+                    <span>${ins.netadmin_job_count} 筆</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                    <span>機關總招募職缺:</span>
+                    <span>${ins.total_job_count} 筆</span>
+                </div>
+                ${ins.skip_reason ? `<div style="color:var(--accent-red); font-size:0.8rem; margin-top:0.3rem;">⚠️ 略過分析原因: ${ins.skip_reason}</div>` : ""}
+            `;
+
+            // 3. 設定業務微調元件
+            const users = ins.estimated_users || 50;
+            const margin = parseFloat(ins.margin_rate || 0.15);
+
+            document.getElementById("inputUsers").value = users;
+            updateUsersLabel(users);
+
+            document.getElementById("inputMargin").value = margin;
+            updateMarginLabel(margin);
+
+            // 4. 渲染推薦結果
+            renderDrawerRecommendedBox(ins);
+
+            // 5. 展開面板
+            document.getElementById("drawerOverlay").classList.add("active");
+            document.getElementById("drawerPanel").classList.add("active");
+        } catch(e) {
+            showToast("展開決策面板異常", "error");
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 關閉決策面板
+    function closeDrawer() {
+        document.getElementById("drawerOverlay").classList.remove("active");
+        document.getElementById("drawerPanel").classList.remove("active");
+        // 關閉時重新載入列表與統計
+        loadDashboardStats();
+        loadInsightsList(currentPage);
+    }
+
+    // 更新 UI 人數 Label
+    function updateUsersLabel(val) {
+        document.getElementById("labelUsers").textContent = `${val} 人`;
+    }
+
+    // 更新 UI 毛利率 Label
+    function updateMarginLabel(val) {
+        const percentage = Math.round(val * 100);
+        document.getElementById("labelMargin").textContent = `${percentage}%`;
+    }
+
+    // 渲染推薦設備與標價的區塊
+    function renderDrawerRecommendedBox(ins) {
+        document.getElementById("drawerBandwidth").textContent = ins.vpn_bandwidth_mbps ? `${ins.vpn_bandwidth_mbps} Mbps` : "-- Mbps";
+        
+        let primaryName = "—";
+        let model = "--";
+        let capability = "--";
+        let cost = "--";
+        let market = "--";
+        let suggested = "$0 元";
+
+        if (ins.recommended_devices_json && ins.recommended_devices_json !== "[]") {
+            try {
+                const devices = JSON.parse(ins.recommended_devices_json);
+                if (devices && devices.length > 0) {
+                    const dev = devices[0];
+                    primaryName = `${dev.brand} ${dev.model}`;
+                    model = dev.model;
+                    capability = `VPN Tunnels: ${dev.max_vpn_tunnels || 0} / Concurrent: ${dev.max_concurrent || 0}`;
+                    
+                    // 成本與售價
+                    cost = dev.cost_price ? `$${Number(dev.cost_price).toLocaleString()} 元` : "無成本資料";
+                    market = dev.reference_price ? `$${Number(dev.reference_price).toLocaleString()} 元` : "--";
+                }
+            } catch(e){}
+        }
+
+        if (ins.suggested_bid_price && ins.suggested_bid_price > 0) {
+            suggested = `$${Number(ins.suggested_bid_price).toLocaleString()} 元`;
+        }
+
+        document.getElementById("drawerPrimaryDevice").textContent = primaryName;
+        document.getElementById("boxModel").textContent = model;
+        document.getElementById("boxCapability").textContent = capability;
+        document.getElementById("boxCost").textContent = cost;
+        document.getElementById("boxMarket").textContent = market;
+        document.getElementById("drawerSuggestedPrice").textContent = suggested;
+    }
+
+    // AJAX 觸發設備匹配 (當預期人數滑桿改變且鬆開時)
+    async function triggerDeviceMatch() {
+        const tenderId = currentTenderIdForDrawer;
+        const users = parseInt(document.getElementById("inputUsers").value);
+
+        try {
+            const resp = await fetch(`/api/insights/${tenderId}/match-device`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ estimated_users: users })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                // 匹配成功後，通常會需要重新計算一次報價以配合新設備
+                await triggerPriceCalculate();
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch(e) {
+            showToast("觸發設備匹配失敗", "error");
+        }
+    }
+
+    // AJAX 觸發標價推估 (當毛利率改變且鬆開時)
+    async function triggerPriceCalculate() {
+        const tenderId = currentTenderIdForDrawer;
+        const margin = parseFloat(document.getElementById("inputMargin").value);
+
+        try {
+            const resp = await fetch(`/api/insights/${tenderId}/calculate-price`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ margin_rate: margin })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                // 更新 Drawer 中的推薦區塊
+                renderDrawerRecommendedBox(data.insight);
+                showToast("決策微調已成功套用！", "success");
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch(e) {
+            showToast("觸發報價計算失敗", "error");
+        }
+    }
+
+    // 手動推送業務洞察到業務 Discord 頻道
+    async function pushSalesInsightToDiscord() {
+        const tenderId = currentTenderIdForDrawer;
+        try {
+            showLoading(true);
+            const resp = await fetch(`/api/sales/insights/${tenderId}/push`, { method: "POST" });
+            const data = await resp.json();
+
+            if (data.success) {
+                showToast(data.message, "success");
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch(e) {
+            showToast("推送到 Discord 失敗", "error");
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 一鍵同步通訊錄 AJAX
+    async function syncContacts() {
+        try {
+            showLoading(true);
+            const resp = await fetch("/api/contacts/sync", { method: "POST" });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast(`通訊錄同步完成！新增 ${data.added_count} 筆聯絡人。`, "success");
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch (e) {
+            showToast("同步通訊錄異常", "error");
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 觸發 Discord 本日業務摘要推播
+    async function triggerDailySummaryPush() {
+        if (!confirm("確定要現在立即向 Discord 業務頻道發送本日摘要嗎？")) return;
+        
+        try {
+            showLoading(true);
+            // 我們可以使用系統設定中的業務 Webhook 測試，或者在後端額外提供 API。
+            // 由於 /api/settings/test-sales-webhook 本身會測試 sales webhook，而如果需要完整的摘要推播，我們可以使用一個專用的 API 或是 scheduler 發送。
+            // 為了不新增過多一次性 API，我們可以直接呼叫業務摘要的發送。
+            // 等等！我們有在 scheduler.py 註冊任務，後端如果要手動發送業務摘要推播，我們可以新增一個 `/api/sales/summary/push` 或是調用相關方法。
+            // 我們在 app.py 裡面是否可以多註冊一個手動發送業務摘要的路由？
+            // 沒錯！如果我們有 `/api/sales/summary/push` 這會非常方便！
+            // 讓我們先檢查一下，在 app.py 中是否有這樣的手動推播路由，如果沒有，我們可以直接在 app.py 中新增：
+            // `POST /api/sales/summary/push` -> 呼叫 `send_sales_summary(db)`。
+            // 這是非常有用的功能！我們等一下可以在 app.py 中順便加上去。
+            
+            const resp = await fetch("/api/sales/summary/push", { method: "POST" });
+            const data = await resp.json();
+            
+            if (data.success) {
+                showToast("本日業務摘要推播成功！", "success");
+            } else {
+                showToast(data.message, "error");
+            }
+        } catch (e) {
+            showToast("本日業務摘要推播失敗", "error");
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 顯示 Loading 遮罩
+    function showLoading(show) {
+        const loader = document.getElementById("loadingOverlay");
+        if (loader) {
+            loader.style.display = show ? "flex" : "none";
+        }
+    }
+</script>
+{% endblock %}

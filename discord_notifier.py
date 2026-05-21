@@ -551,7 +551,7 @@ def send_high_potential_notification(tender: dict, insight: dict) -> bool:
     try:
         resp = requests.post(webhook_url, json=payload, timeout=10)
         if resp.status_code == 204:
-            logger.info(f"高潛力通知已發送: {tender.get('tender_id')}")
+            logger.info(f"高潛力通知已發送: {tender.get('tender_id', '')}")
             return True
         else:
             logger.error(f"高潛力通知失敗: {resp.status_code}")
@@ -559,3 +559,108 @@ def send_high_potential_notification(tender: dict, insight: dict) -> bool:
     except requests.RequestException as e:
         logger.error(f"高潛力通知異常: {e}")
         return False
+
+
+def send_sales_summary(db) -> bool:
+    """發送每日業務中台摘要推播（每日 17:00 執行）"""
+    webhook_url = config.SALES_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        logger.warning("業務 Discord Webhook URL 未設定，跳過每日摘要通知")
+        return False
+
+    from datetime import datetime
+    from models import SalesInsight, Tender, BiddingTender
+
+    # 取得今天 00:00:00 的時間
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    try:
+        # 1. 統計今日新進的高潛力客戶數 (remote_score >= 50)
+        new_high_potentials = db.query(SalesInsight).filter(
+            SalesInsight.created_at >= today_start,
+            SalesInsight.remote_score >= 50
+        ).count()
+
+        # 2. 統計目前待報價的高潛力案件數 (遠端分數 >= 50 且無建議標價)
+        pending_quotes = db.query(SalesInsight).filter(
+            SalesInsight.remote_score >= 50,
+            (SalesInsight.suggested_bid_price == None) | (SalesInsight.suggested_bid_price <= 0)
+        ).count()
+
+        # 3. 找出今日分數最高的「最優商機」
+        best_lead = db.query(SalesInsight).filter(
+            SalesInsight.created_at >= today_start
+        ).order_by(SalesInsight.remote_score.desc()).first()
+
+        best_lead_desc = "今日無新分析的案件"
+        best_url = ""
+        best_color = COLOR_INFO
+
+        if best_lead:
+            score = int(best_lead.remote_score)
+            best_color = COLOR_HIGH if score >= 80 else (COLOR_MEDIUM if score >= 50 else COLOR_LOW)
+
+            # 查出案名
+            tender_obj = db.query(Tender).filter_by(tender_id=best_lead.tender_id).first()
+            if not tender_obj:
+                tender_obj = db.query(BiddingTender).filter_by(tender_id=best_lead.tender_id).first()
+
+            tender_name = tender_obj.tender_name if tender_obj else "未知案件"
+            best_url = tender_obj.tender_url if tender_obj else ""
+            org_name = best_lead.org_name or (tender_obj.org_name if tender_obj else "未知機關")
+
+            suggested_price = "尚未評估"
+            if best_lead.suggested_bid_price and best_lead.suggested_bid_price > 0:
+                suggested_price = f"`${best_lead.suggested_bid_price:,.0f} 元`"
+
+            best_lead_desc = (
+                f"🏢 **最優客戶**　{org_name}\n"
+                f"📋 **案名**　[{tender_name}]({best_url or '#'})\n"
+                f"📌 **案號**　`{best_lead.tender_id}`\n"
+                f"💡 **潛力分數**　**{score}** 分\n"
+                f"💰 **建議標價**　{suggested_price}"
+            )
+
+        # 4. 組裝 Embed 訊息
+        embed = {
+            "title": "📊 每日業務中台摘要",
+            "color": COLOR_INFO,
+            "description": "本系統自動偵測並為你整理本日的業務商機與需求評估進度：",
+            "fields": [
+                {
+                    "name": "🆕 今日新進高潛力商機",
+                    "value": f"**{new_high_potentials}** 筆",
+                    "inline": True
+                },
+                {
+                    "name": "⏳ 待報價高潛力案件",
+                    "value": f"**{pending_quotes}** 筆",
+                    "inline": True
+                },
+                {
+                    "name": "🔥 本日最推薦跟進商機",
+                    "value": best_lead_desc,
+                    "inline": False
+                }
+            ],
+            "footer": {
+                "text": f"採購中台系統 | 摘要時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            }
+        }
+
+        payload = {
+            "content": "📢 **[每日摘要] 業務中台每日統計與商機報表已出爐！**",
+            "embeds": [embed]
+        }
+
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 204:
+            logger.info("每日業務摘要推播成功")
+            return True
+        else:
+            logger.error(f"每日業務摘要推播失敗: {resp.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"每日業務摘要發送異常: {e}", exc_info=True)
+        return False
+

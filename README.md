@@ -28,6 +28,8 @@
 | **Phase 3** | **設備庫與通訊錄** | 建立 Web 設備管理資料庫（CRUD）與企業通訊錄。支援自動從標案承辦人萃取聯絡資訊、匯出標準 vCard 檔案（iPhone 相容）與產生手機相機可直接掃描的 QR Code。 |
 | **Phase 4** | **設備匹配引擎 (模組 B)** | 研發 **模組 B** 需求計算引擎。自動根據案源規模或預估使用者數，帶入 70% 同時上線率與 2Mbps 頻寬標準，推算 VPN 隧道與頻寬需求，自動從設備庫中匹配出性價比最高的前三台設備。 |
 | **Phase 5** | **報價與比價引擎 (模組 C)** | 研發 **模組 C** 動態報價引擎與競品監控。支援記錄設備歷史決標價與多通路市場價（`price_history`），並依據匹配推薦設備的**公司成本價**，結合設定的**目標毛利率**，使用專業毛利公式自動計算「建議投標標價」。 |
+| **Phase 6** | **業務中台與全面整合** | 進入 **階段 6**，實作一個暗黑科技感 Glassmorphism 整合業務儀表板 `/sales`。提供統計數據與前 5 大設備熱度排行。實作 AJAX 雙滑桿微調抽屜面板，業務可即時微調估計人數與毛利率，無痛動態重算設備匹配與標價。整合每日 17:00 Discord 業務摘要推播與一鍵承辦人同步通訊錄。 |
+
 
 ---
 
@@ -156,6 +158,7 @@ web_crawler/
 │   ├── index.html         # 公開徵求列表與搜尋管理
 │   ├── bidding.html       # 公開招標列表與押標金展示
 │   ├── tracked.html       # 追蹤案件管理與備註編輯
+│   ├── sales_dashboard.html # 業務中台儀表板與 AJAX 決策微調抽屜
 │   ├── devices.html       # 設備庫管理面板
 │   ├── contacts.html      # 企業通訊錄面板
 │   └── settings.html      # 系統關鍵字、排程與 Webhook 設定面板
@@ -195,6 +198,7 @@ python run.py
 | 頁面 | 核心功能介紹 | 亮點設計 |
 |:---|:---|:---|
 | **公開徵求** (`/`) | 列表、關鍵字搜尋、案件追蹤、手動 Discord 推播。 | 支援關鍵字標記，過濾出資通訊高度相關案件。 |
+| **業務中台** (`/sales`) | 業務中台總覽、設備推薦排行（長度熱度計）、決策微調抽屜（AJAX 雙向即時更新）、一鍵同步通訊錄、手動推送摘要。 | 高級玻璃擬態暗黑風格，純 Vanilla JS 即時互動體驗，完美閉環。 |
 | **公開招標** (`/bidding`) | 展示截止投標時間、採購性質、預算與自動解析的押標金資訊。 | 提供一鍵手動補抓與推播功能。 |
 | **追蹤案件** (`/tracked`) | 業務追蹤面板，可自由編輯追蹤備註與進度。 | 用戶可於此頁面展開「**業務決策面板**」，進行模組 B 與 C 的手動微調。 |
 | **設備管理** (`/devices`) | 防火牆、路由器、AP 等設備型號庫，紀錄設備的 VPN 規格、吞吐量與**內部成本價**。 | 模組 B 設備匹配的基礎數據庫。 |
@@ -224,13 +228,18 @@ python run.py
 
 ## API 一覽
 
-### 1. 設備匹配與業務洞察 API (routers/insights.py)
+### 1. 設備匹配與業務洞察 API (routers/insights.py & app.py)
 
 | 方法 | 路徑 | 參數 | 說明 |
 |:---|:---|:---|:---|
+| GET | `/api/sales/dashboard` | 無 | 取得業務中台統計數據與最熱門設備排行前 5 名。 |
+| GET | `/api/sales/insights` | Query: `page` (int), `potential` (str), `status` (str), `sort` (str), `search` (str) | 取得所有案件的業務洞察列表，支援高潛力/待報價篩選、客製預算與分數排序、關鍵字搜尋。 |
 | GET | `/api/insights/{tender_id}` | 路徑參數 `tender_id` | 取得特定案件的完整業務評估資料（含潛力分、推薦設備、建議標價）。 |
 | POST | `/api/insights/{tender_id}/match-device` | JSON: `{"estimated_users": int, "budget": float}` | 手動輸入或變更預估使用者人數，重新計算 VPN 頻寬並匹配推薦設備。 |
 | POST | `/api/insights/{tender_id}/calculate-price` | JSON: `{"margin_rate": float}` | 調整目標利潤率（例如 `0.20` 代表 20% 毛利），動態計算建議標價。 |
+| POST | `/api/sales/insights/{tender_id}/push` | 路徑參數 `tender_id` | 手動推送特定標案的詳細業務洞察卡片至業務 Discord 頻道。 |
+| POST | `/api/sales/summary/push` | 無 | 手動立即向 Discord 業務頻道發送本日業務摘要推播。 |
+
 
 ### 2. 設備價格與競品監控 API (routers/prices.py)
 
@@ -246,6 +255,7 @@ python run.py
 | GET | `/api/devices` | 無 | 取得系統內所有作用中的設備型號清單。 |
 | POST | `/api/devices` | JSON 設備屬性 | 新增設備型號至資料庫。 |
 | GET | `/api/contacts` | 無 | 取得通訊錄名單。 |
+| POST | `/api/contacts/sync` | 無 | 從現有標案自動同步並去重萃取承辦人至通訊錄檔案。 |
 | GET | `/api/contacts/export-vcard` | 無 | 將通訊錄內所有聯絡人打包成 `.vcf` 格式檔案下載。 |
 | GET | `/api/contacts/{id}/qrcode` | 路徑參數 `id` | 產生該聯絡人專屬的 vCard QR Code 圖片，供手機掃描快速加入。 |
 | GET | `/api/contacts/export-csv` | 無 | 匯出通訊錄為 CSV 檔案。 |

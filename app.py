@@ -18,7 +18,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from config import config
-from models import init_db, get_db, Tender, BiddingTender, ScrapeLog, SessionLocal
+from models import init_db, get_db, Tender, BiddingTender, ScrapeLog, SessionLocal, SalesInsight
 from scheduler import (
     manual_run_scraper, manual_run_bidding_scraper, manual_check_tracked,
     is_scraper_running, get_running_mode, get_next_run_times, reschedule_jobs,
@@ -181,6 +181,24 @@ async def tracked_page(request: Request):
         db.close()
 
 
+@app.get("/sales")
+async def sales_page(request: Request):
+    """業務中台儀表板頁面"""
+    db = SessionLocal()
+    try:
+        tracked_count = db.query(func.count(Tender.id)).filter(
+            Tender.is_tracked == True
+        ).scalar() or 0
+        
+        return templates.TemplateResponse("sales_dashboard.html", {
+            "request": request,
+            "active_page": "sales",
+            "tracked_count": tracked_count,
+        })
+    finally:
+        db.close()
+
+
 @app.get("/settings")
 async def settings_page(request: Request):
     """系統設定頁面"""
@@ -246,6 +264,207 @@ async def api_stats():
     db = SessionLocal()
     try:
         return _get_stats(db)
+    finally:
+        db.close()
+
+
+@app.get("/api/sales/dashboard")
+async def api_sales_dashboard():
+    """取得業務中台總覽數據"""
+    db = SessionLocal()
+    try:
+        from collections import Counter
+        import json
+        
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # 今日新進高潛力商機數 (remote_score >= 50 且 created_at >= 今天)
+        today_high_potentials = db.query(SalesInsight).filter(
+            SalesInsight.created_at >= today_start,
+            SalesInsight.remote_score >= 50
+        ).count()
+        
+        # 待報價件數 (remote_score >= 50 且 建議標價為 0 或空)
+        pending_quotes = db.query(SalesInsight).filter(
+            SalesInsight.remote_score >= 50,
+            (SalesInsight.suggested_bid_price == None) | (SalesInsight.suggested_bid_price <= 0)
+        ).count()
+        
+        # 本月已評估件數 (device_matched_at >= 本月 1 號)
+        month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_evaluated = db.query(SalesInsight).filter(
+            SalesInsight.device_matched_at >= month_start
+        ).count()
+        
+        # 最常推薦設備排行（前 5 大）
+        all_insights = db.query(SalesInsight).filter(
+            SalesInsight.recommended_devices_json != None,
+            SalesInsight.recommended_devices_json != "[]"
+        ).all()
+        
+        device_counter = Counter()
+        for ins in all_insights:
+            try:
+                devices = json.loads(ins.recommended_devices_json)
+                if devices and isinstance(devices, list):
+                    primary = devices[0]
+                    name = f"{primary.get('brand', '')} {primary.get('model', '')}"
+                    device_counter[name] += 1
+            except:
+                continue
+                
+        top_devices = [{"name": name, "count": count} for name, count in device_counter.most_common(5)]
+        
+        return {
+            "today_high_potentials": today_high_potentials,
+            "pending_quotes": pending_quotes,
+            "month_evaluated": month_evaluated,
+            "top_devices": top_devices,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/api/sales/insights")
+async def api_sales_insights(
+    page: int = 1,
+    potential: str = None,   # "high" | None
+    status: str = None,      # "pending_quote" | None
+    sort: str = "score_desc", # "score_desc" | "score_asc" | "budget_desc" | "budget_asc" | "time_desc" | "time_asc"
+    search: str = None,
+):
+    """取得業務洞察案件列表"""
+    db = SessionLocal()
+    try:
+        query = db.query(SalesInsight)
+        
+        # 篩選：僅高潛力 (score >= 50)
+        if potential == "high":
+            query = query.filter(SalesInsight.remote_score >= 50)
+            
+        # 篩選：僅待報價 (suggested_bid_price <= 0 or None)
+        if status == "pending_quote":
+            query = query.filter(
+                (SalesInsight.suggested_bid_price == None) | 
+                (SalesInsight.suggested_bid_price <= 0)
+            )
+            
+        # 關鍵字搜尋：搜尋機關名稱或案號
+        if search:
+            pattern = f"%{search}%"
+            query = query.filter(
+                (SalesInsight.org_name.like(pattern)) |
+                (SalesInsight.tender_id.like(pattern))
+            )
+            
+        insights = query.all()
+        
+        # 批次查詢關聯案件
+        tender_ids = [ins.tender_id for ins in insights]
+        tenders_map = {t.tender_id: t for t in db.query(Tender).filter(Tender.tender_id.in_(tender_ids)).all()}
+        biddings_map = {b.tender_id: b for b in db.query(BiddingTender).filter(BiddingTender.tender_id.in_(tender_ids)).all()}
+        
+        # 組合字典
+        result_list = []
+        for ins in insights:
+            ins_dict = ins.to_dict()
+            t_obj = tenders_map.get(ins.tender_id) or biddings_map.get(ins.tender_id)
+            
+            if t_obj:
+                ins_dict["tender_name"] = t_obj.tender_name
+                ins_dict["budget"] = t_obj.budget
+                ins_dict["tender_url"] = t_obj.tender_url
+                ins_dict["tender_status"] = t_obj.status
+                ins_dict["contact_person"] = t_obj.contact_person
+                ins_dict["phone"] = t_obj.phone
+            else:
+                ins_dict["tender_name"] = "未知案件"
+                ins_dict["budget"] = "未公告"
+                ins_dict["tender_url"] = ""
+                ins_dict["tender_status"] = ""
+                ins_dict["contact_person"] = ""
+                ins_dict["phone"] = ""
+                
+            result_list.append(ins_dict)
+            
+        # 輔助解析預算
+        def get_budget_val(x):
+            b_str = x.get("budget", "")
+            if not b_str:
+                return 0
+            try:
+                cleaned = b_str.replace(",", "").replace("元", "").replace("$", "").strip()
+                return float(cleaned)
+            except:
+                return 0
+                
+        # 排序
+        if sort == "score_desc":
+            result_list.sort(key=lambda x: x.get("remote_score", 0), reverse=True)
+        elif sort == "score_asc":
+            result_list.sort(key=lambda x: x.get("remote_score", 0))
+        elif sort == "budget_desc":
+            result_list.sort(key=lambda x: get_budget_val(x), reverse=True)
+        elif sort == "budget_asc":
+            result_list.sort(key=lambda x: get_budget_val(x))
+        elif sort == "time_desc":
+            result_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        elif sort == "time_asc":
+            result_list.sort(key=lambda x: x.get("created_at", ""))
+            
+        # 分頁
+        total = len(result_list)
+        offset = (page - 1) * PAGE_SIZE
+        paginated_list = result_list[offset:offset+PAGE_SIZE]
+        
+        return {
+            "insights": paginated_list,
+            "total": total,
+            "page": page,
+            "total_pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/sales/insights/{tender_id}/push")
+async def api_push_sales_insight(tender_id: str):
+    """手動將特定案件的業務洞察推送至業務 Discord 頻道"""
+    db = SessionLocal()
+    try:
+        insight = db.query(SalesInsight).filter_by(tender_id=tender_id).first()
+        if not insight:
+            return JSONResponse({"success": False, "message": "尚未建立該案件的洞察資料"}, status_code=404)
+            
+        tender = db.query(Tender).filter_by(tender_id=tender_id).first()
+        if not tender:
+            tender = db.query(BiddingTender).filter_by(tender_id=tender_id).first()
+            
+        if not tender:
+            return JSONResponse({"success": False, "message": "找不到關聯的採購案件資訊"}, status_code=404)
+            
+        from discord_notifier import send_high_potential_notification
+        ok = send_high_potential_notification(tender.to_dict(), insight.to_dict())
+        
+        return {
+            "success": ok,
+            "message": "已成功推送到業務 Discord 頻道！" if ok else "推播失敗，請檢查 SALES_DISCORD_WEBHOOK_URL",
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/sales/summary/push")
+async def api_push_sales_summary():
+    """手動推送今日業務中台摘要到業務 Discord 頻道"""
+    db = SessionLocal()
+    try:
+        from discord_notifier import send_sales_summary
+        ok = send_sales_summary(db)
+        return {
+            "success": ok,
+            "message": "今日業務摘要已成功發送！" if ok else "發送失敗，請檢查 SALES_DISCORD_WEBHOOK_URL",
+        }
     finally:
         db.close()
 

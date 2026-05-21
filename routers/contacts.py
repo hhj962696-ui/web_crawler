@@ -179,3 +179,65 @@ async def export_contacts_csv():
         )
     finally:
         db.close()
+
+@router.post("/api/contacts/sync")
+async def sync_contacts_from_tenders():
+    """從招標與公開徵求案件中同步承辦人資訊到通訊錄"""
+    db = SessionLocal()
+    try:
+        from models import Tender, BiddingTender
+        
+        # 1. 取得所有案件
+        tenders = db.query(Tender).filter(Tender.contact_person != "", Tender.contact_person != None).all()
+        biddings = db.query(BiddingTender).filter(BiddingTender.contact_person != "", BiddingTender.contact_person != None).all()
+        
+        # 2. 查詢現有的聯絡人以防重複
+        existing_contacts = db.query(OrgContact).all()
+        existing_keys = {(c.org_name, c.contact_name) for c in existing_contacts}
+        
+        added_count = 0
+        
+        # 3. 處理公開徵求
+        for t in tenders:
+            key = (t.org_name, t.contact_person)
+            if key not in existing_keys:
+                contact = OrgContact(
+                    org_name=t.org_name,
+                    contact_name=t.contact_person,
+                    phone=t.phone,
+                    source_tender_id=t.tender_id,
+                    tags="公開徵求同步",
+                    notes=f"從案號 {t.tender_id} 自動同步"
+                )
+                db.add(contact)
+                existing_keys.add(key)
+                added_count += 1
+                
+        # 4. 處理公開招標
+        for b in biddings:
+            key = (b.org_name, b.contact_person)
+            if key not in existing_keys:
+                contact = OrgContact(
+                    org_name=b.org_name,
+                    contact_name=b.contact_person,
+                    phone=b.phone,
+                    source_tender_id=b.tender_id,
+                    tags="公開招標同步",
+                    notes=f"從招標案號 {b.tender_id} 自動同步"
+                )
+                db.add(contact)
+                existing_keys.add(key)
+                added_count += 1
+                
+        if added_count > 0:
+            db.commit()
+            
+        return {
+            "success": True,
+            "message": f"同步完成，共新增 {added_count} 筆聯絡人資料！",
+            "added_count": added_count
+        }
+    except Exception as e:
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+    finally:
+        db.close()

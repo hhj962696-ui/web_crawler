@@ -41,6 +41,8 @@ class Config:
     HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
     JOB104_SCHEDULE_HOUR = int(os.getenv("JOB104_SCHEDULE_HOUR", "10"))
     JOB104_SCHEDULE_MINUTE = int(os.getenv("JOB104_SCHEDULE_MINUTE", "0"))
+    SALES_SUMMARY_HOUR = int(os.getenv("SALES_SUMMARY_HOUR", "17"))
+    SALES_SUMMARY_MINUTE = int(os.getenv("SALES_SUMMARY_MINUTE", "0"))
 
     # 104 探測器 — 略過的機關名稱關鍵字
     JOB104_SKIP_KEYWORDS = [
@@ -121,6 +123,8 @@ class Config:
         cls.HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
         cls.JOB104_SCHEDULE_HOUR = int(os.getenv("JOB104_SCHEDULE_HOUR", "10"))
         cls.JOB104_SCHEDULE_MINUTE = int(os.getenv("JOB104_SCHEDULE_MINUTE", "0"))
+        cls.SALES_SUMMARY_HOUR = int(os.getenv("SALES_SUMMARY_HOUR", "17"))
+        cls.SALES_SUMMARY_MINUTE = int(os.getenv("SALES_SUMMARY_MINUTE", "0"))
         cls.JOB104_SKIP_KEYWORDS = [
             kw.strip()
             for kw in os.getenv(

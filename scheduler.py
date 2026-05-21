@@ -105,6 +105,25 @@ def _safe_run_job_analyzer():
             _running_mode = None
 
 
+def _safe_run_sales_summary():
+    logger.info("[排程] 開始發送每日業務中台摘要推播...")
+    try:
+        from models import SessionLocal
+        from discord_notifier import send_sales_summary
+        db = SessionLocal()
+        try:
+            success = send_sales_summary(db)
+            if success:
+                logger.info("[排程] 每日業務中台摘要推播成功")
+            else:
+                logger.error("[排程] 每日業務中台摘要推播失敗")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"[排程] 每日業務中台摘要推播異常: {e}", exc_info=True)
+
+
+
 def is_scraper_running() -> bool:
     return _running_mode is not None
 
@@ -221,6 +240,18 @@ def _register_jobs():
         replace_existing=True,
     )
 
+    scheduler.add_job(
+        _safe_run_sales_summary,
+        CronTrigger(
+            hour=config.SALES_SUMMARY_HOUR,
+            minute=config.SALES_SUMMARY_MINUTE,
+        ),
+        id="sales_summary_job",
+        name="每日業務中台摘要推播",
+        replace_existing=True,
+    )
+
+
 
 def init_scheduler():
     _register_jobs()
@@ -234,7 +265,8 @@ def init_scheduler():
         f"(回溯 {config.BIDDING_LOOKBACK_DAYS} 天), "
         f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}, "
         f"運作檢測: {config.HEALTH_CHECK_HOUR:02d}:{config.HEALTH_CHECK_MINUTE:02d}, "
-        f"104 探測: {config.JOB104_SCHEDULE_HOUR:02d}:{config.JOB104_SCHEDULE_MINUTE:02d}"
+        f"104 探測: {config.JOB104_SCHEDULE_HOUR:02d}:{config.JOB104_SCHEDULE_MINUTE:02d}, "
+        f"業務摘要: {config.SALES_SUMMARY_HOUR:02d}:{config.SALES_SUMMARY_MINUTE:02d}"
     )
 
 
