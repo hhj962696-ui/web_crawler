@@ -363,44 +363,83 @@ class AnalysisLog(Base):
 engine = create_engine(config.DATABASE_URL, echo=False)
 
 
-# 啟用 SQLite WAL 模式，提升並行讀寫效能
+# 啟用 SQLite WAL 模式，提升並行讀寫效能（若在 Synology NAS 等不支援 WAL 鎖定之檔案系統，自動降級為 DELETE 模式）
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+    except Exception as e:
+        import sys
+        print(f"[Warning] Failed to set SQLite journal_mode=WAL ({e}). Falling back to default journal mode.", file=sys.stderr)
+    try:
+        cursor.execute("PRAGMA foreign_keys=ON")
+    except Exception as e:
+        import sys
+        print(f"[Warning] Failed to set SQLite foreign_keys=ON ({e})", file=sys.stderr)
     cursor.close()
+
 
 
 SessionLocal = sessionmaker(bind=engine)
 
 
 def init_db():
-    """初始化資料庫，建立所有資料表"""
+    """初始化資料庫，建立所有資料表，並自動執行欄位擴充遷移 (Auto-Migration)"""
     Base.metadata.create_all(engine)
     
-    # 自動進行欄位擴充 (Schema Migration)
-    # 檢查 org_contacts 是否已有 latitude/longitude 欄位
+    # === SQLite 通用自動欄位遷移系統 ===
     from sqlalchemy import text
+    from sqlalchemy import Integer, Float, Boolean, DateTime
     db = SessionLocal()
     try:
-        # PRAGMA 不需要事務，可以直接執行
-        result = db.execute(text("PRAGMA table_info(org_contacts)"))
-        columns = [row[1] for row in result.fetchall()]
-        
-        if "latitude" not in columns:
-            db.execute(text("ALTER TABLE org_contacts ADD COLUMN latitude FLOAT"))
-            db.commit()
-            print("Database Migration: Added latitude column to org_contacts table.")
-        if "longitude" not in columns:
-            db.execute(text("ALTER TABLE org_contacts ADD COLUMN longitude FLOAT"))
-            db.commit()
-            print("Database Migration: Added longitude column to org_contacts table.")
+        for table_name, table_obj in Base.metadata.tables.items():
+            # 取得該資料表在 SQLite 中目前已存在的欄位
+            result = db.execute(text(f"PRAGMA table_info({table_name})"))
+            existing_cols = {row[1] for row in result.fetchall()}
+            
+            if not existing_cols:
+                # 該資料表不存在於 SQLite 中（通常 create_all 會處理，跳過）
+                continue
+                
+            # 比對 SQLAlchemy 模型中定義的所有欄位
+            for col_name, col_obj in table_obj.columns.items():
+                if col_name not in existing_cols:
+                    # 判斷對應的 SQLite 欄位資料型態
+                    t = col_obj.type
+                    if isinstance(t, Integer):
+                        sql_type = "INTEGER"
+                    elif isinstance(t, Float):
+                        sql_type = "FLOAT"
+                    elif isinstance(t, Boolean):
+                        sql_type = "BOOLEAN"
+                    elif isinstance(t, DateTime):
+                        sql_type = "DATETIME"
+                    else:
+                        sql_type = "TEXT"
+                        
+                    # 預設值處理
+                    default_str = ""
+                    if col_obj.default is not None and hasattr(col_obj.default, "arg"):
+                        val = col_obj.default.arg
+                        if isinstance(val, (int, float)):
+                            default_str = f" DEFAULT {val}"
+                        elif isinstance(val, bool):
+                            default_str = f" DEFAULT {1 if val else 0}"
+                        elif isinstance(val, str):
+                            default_str = f" DEFAULT '{val}'"
+                            
+                    # 執行 ALTER TABLE 語法新增欄位
+                    alter_query = f"ALTER TABLE {table_name} ADD COLUMN {col_name} {sql_type}{default_str}"
+                    db.execute(text(alter_query))
+                    db.commit()
+                    print(f"Database Migration: Added column '{col_name}' ({sql_type}) to table '{table_name}'.")
     except Exception as e:
         print(f"Database Migration Warning: {e}")
         db.rollback()
     finally:
         db.close()
+
 
 
 def get_db():

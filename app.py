@@ -13,7 +13,9 @@ from urllib.parse import quote
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
+import traceback
+
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
@@ -56,6 +58,62 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 # 每頁顯示筆數
 PAGE_SIZE = 20
+
+
+# === 全域異常處理器 ===
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    tb = traceback.format_exc()
+    logger.error(f"Unhandled exception: {tb}")
+    return HTMLResponse(
+        status_code=500,
+        content=f"""
+        <html>
+            <head>
+                <title>500 Internal Server Error</title>
+                <style>
+                    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; background-color: #f8f9fa; color: #212529; line-height: 1.5; }}
+                    .container {{ max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #e9ecef; }}
+                    h1 {{ color: #dc3545; font-size: 28px; margin-top: 0; display: flex; align-items: center; gap: 10px; }}
+                    .info {{ background-color: #f1f3f5; padding: 15px; border-radius: 8px; border-left: 4px solid #adb5bd; margin-bottom: 20px; font-size: 14px; }}
+                    .info table {{ border-collapse: collapse; width: 100%; }}
+                    .info td {{ padding: 4px 8px; }}
+                    .info td.label {{ font-weight: bold; width: 150px; color: #495057; }}
+                    pre {{ background-color: #212529; color: #f8f9fa; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; font-size: 13px; border: 1px solid #343a40; margin-top: 15px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.1); }}
+                    .suggestion {{ background-color: #e8f4fd; color: #004085; padding: 15px; border-radius: 8px; border-left: 4px solid #2b8a3e; margin-bottom: 20px; font-size: 14px; }}
+                    .suggestion ul {{ margin: 5px 0 0 20px; padding: 0; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>⚠️ 500 Internal Server Error</h1>
+                    <p>伺服器在處理請求時發生了未預期的錯誤。請參考下方的錯誤明細與排除建議。</p>
+                    
+                    <div class="suggestion">
+                        <strong>💡 常見排除建議：</strong>
+                        <ul>
+                            <li><strong>權限問題</strong>：若錯誤明細提及 <code>sqlite3.OperationalError</code>、<code>Permission denied</code> 或無法寫入，請確認 NAS 上掛載的 <code>./data</code> 目錄對所有使用者 (Everyone) 都有完整讀寫權限。</li>
+                            <li><strong>資料庫鎖定</strong>：若為 <code>database locked</code>，通常是 SQLite 在 NAS 的網路硬碟上鎖定異常，可重啟容器以釋放鎖定。</li>
+                        </ul>
+                    </div>
+
+                    <div class="info">
+                        <table>
+                            <tr><td class="label">請求 URL</td><td>{request.url}</td></tr>
+                            <tr><td class="label">請求方法</td><td>{request.method}</td></tr>
+                            <tr><td class="label">發生時間</td><td>{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</td></tr>
+                            <tr><td class="label">錯誤類型</td><td>{type(exc).__name__}</td></tr>
+                        </table>
+                    </div>
+
+                    <h3>📝 詳細錯誤堆疊 (Traceback)：</h3>
+                    <pre>{tb}</pre>
+                </div>
+            </body>
+        </html>
+        """
+    )
+
 
 
 # === 工具函式 ===
