@@ -49,17 +49,17 @@
 
 ```mermaid
 graph TD
-    subgraph 數據來源
+    subgraph "數據來源"
         PCC["政府電子採購網<br>(公開徵求/公開招標)"]
         J104["104 人力銀行<br>(職缺探測)"]
     end
 
-    subgraph 核心爬蟲與排程 (scheduler.py)
+    subgraph "核心爬蟲與排程 (scheduler.py)"
         S1["scraper.py (徵求爬蟲)"]
         S2["bidding_scraper.py (招標爬蟲)"]
     end
 
-    subgraph 本地儲存 (SQLite 啟用 WAL)
+    subgraph "本地儲存 (SQLite 啟用 WAL)"
         T_Tenders["tenders (案件表)"]
         T_Bidding["bidding_tenders (招標表)"]
         T_Insights["sales_insights (業務洞察主表)"]
@@ -73,7 +73,7 @@ graph TD
     S1 --> T_Tenders
     S2 --> T_Bidding
 
-    subgraph 業務中台管線 (sales_pipeline.py)
+    subgraph "業務中台管線 (sales_pipeline.py)"
         PL["Pipeline 背景觸發控制器"]
         MA["模組 A: 104 探測器<br>(job_analyzer.py)"]
         MB["模組 B: 設備匹配引擎<br>(device_matcher.py)"]
@@ -98,7 +98,7 @@ graph TD
     T_Devices --> MC
     MC --> T_Prices
 
-    subgraph 推播與通路通知
+    subgraph "推播與通路通知"
         DN["discord_notifier.py (推播中心)"]
         DC_Ch1["Discord #公開徵求頻道"]
         DC_Ch2["Discord #公開招標頻道"]
