@@ -334,13 +334,19 @@ function initSidebar() {
     const sidebar = document.getElementById('sidebar');
 
     if (mobileToggle) {
-        mobileToggle.addEventListener('click', () => {
+        mobileToggle.addEventListener('click', (e) => {
+            e.stopPropagation(); // 阻止事件冒泡到 .main-content，防止側邊欄被立刻關閉
             sidebar.classList.toggle('open');
         });
 
         // 點擊主內容區關閉
         document.querySelector('.main-content').addEventListener('click', () => {
             sidebar.classList.remove('open');
+        });
+        
+        // 點擊側邊欄本身時阻止關閉（允許點擊連結與選單內部）
+        sidebar.addEventListener('click', (e) => {
+            e.stopPropagation();
         });
     }
 }

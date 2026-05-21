@@ -86,14 +86,14 @@
 
     /* 設備排行與快速動作 */
     .sales-left-panel {
-        grid-column: span 4;
+        grid-column: span 3;
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
     }
 
     .sales-right-panel {
-        grid-column: span 8;
+        grid-column: span 9;
     }
 
     .dashboard-card {
@@ -240,8 +240,9 @@
     .drawer-panel {
         position: fixed;
         top: 0;
-        right: -450px;
-        width: 450px;
+        right: -100%;
+        width: 100%;
+        max-width: 450px;
         height: 100vh;
         background: var(--bg-secondary);
         border-left: 1px solid var(--border-color);
@@ -409,6 +410,43 @@
         padding: 0.75rem;
         border-radius: var(--radius-sm);
         border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    /* === 響應式排版修正 (加強行動裝置相容性) === */
+    @media (max-width: 1024px) {
+        .sales-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .sales-left-panel {
+            grid-column: span 12;
+            order: 2; /* 將推薦排行與操作放到下方 */
+        }
+        
+        .sales-right-panel {
+            grid-column: span 12;
+            order: 1; /* 主商機評估表格優先顯示 */
+        }
+    }
+
+    @media (max-width: 768px) {
+        .glass-stats-container {
+            grid-template-columns: 1fr;
+        }
+        
+        .filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.75rem;
+        }
+        
+        .search-input-container {
+            width: 100%;
+        }
+        
+        .filter-select {
+            width: 100%;
+        }
     }
 </style>
 

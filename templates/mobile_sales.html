@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0e1a">
+    <title>行動外勤戰術面板</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet.js 地圖 CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <style>
+        :root {
+            --bg-dark: #070b15;
+            --bg-glass: rgba(18, 26, 47, 0.7);
+            --bg-glass-hover: rgba(30, 41, 73, 0.85);
+            --text-primary: #f1f3f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-purple: #a855f7;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-orange: #f97316;
+            --border-glass: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(168, 85, 247, 0.4);
+            
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-top: env(safe-area-inset-top, 0px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+        }
+
+        /* 頂部 Status Bar */
+        header {
+            padding: calc(12px + var(--safe-top)) 16px 12px 16px;
+            background: rgba(7, 11, 21, 0.85);
+            border-bottom: 1px solid var(--border-glass);
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            z-index: 10;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-title span {
+            font-size: 1.4rem;
+        }
+
+        .header-title h1 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #c084fc, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .gps-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-glass);
+            padding: 4px 10px;
+            border-radius: 20px;
+            color: var(--text-secondary);
+        }
+
+        .gps-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .gps-dot.active {
+            background: var(--accent-green);
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        /* 主顯示區域 */
+        .main-viewport {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            margin-bottom: calc(64px + var(--safe-bottom));
+        }
+
+        .tab-content {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 雷達地圖分頁 */
+        #radarView {
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #mapContainer {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 地圖上的懸浮控制卡 */
+        .map-floating-overlay {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .search-radar-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 14px;
+            padding: 10px 14px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            pointer-events: auto;
+        }
+
+        .search-radar-card select {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.8rem;
+        }
+
+        /* 機關案件卡片列表樣式 */
+        .tender-list-container {
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .mobile-card {
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 16px;
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            transition: border-color 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .mobile-card.high-potential {
+            border-left: 4px solid var(--accent-purple);
+        }
+
+        .card-header-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .card-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            line-height: 1.4;
+            color: var(--text-primary);
+        }
+
+        .score-badge {
+            font-size: 0.75rem;
+            font-weight: 700;
+            font-family: monospace;
+            padding: 3px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
+        .score-high {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .score-med {
+            background: rgba(249, 115, 22, 0.15);
+            color: var(--accent-orange);
+            border: 1px solid rgba(249, 115, 22, 0.2);
+        }
+
+        .score-low {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .card-body-meta {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 0;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .meta-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .meta-val {
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .meta-val.budget-color {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .card-recommendations {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 10px;
+            padding: 8px 12px;
+            font-size: 0.8rem;
+        }
+
+        .recommendation-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .recommendation-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .recommendation-row span {
+            color: var(--text-secondary);
+        }
+
+        .recommendation-row strong {
+            color: var(--text-primary);
+        }
+
+        /* 動作按鈕列 */
+        .card-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .action-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 10px 0;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-glass);
+            color: var(--text-primary);
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-button:active {
+            background: rgba(255, 255, 255, 0.12);
+            transform: scale(0.96);
+        }
+
+        .action-button.primary {
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+            border: none;
+            box-shadow: 0 4px 10px rgba(168, 85, 247, 0.2);
+        }
+
+        .action-button.nav-btn {
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        /* 聯絡人/紀錄列表樣式 */
+        .contact-detail-box {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .contact-detail-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .interaction-logs-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 150px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .log-bubble {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255,255,255,0.02);
+        }
+
+        .log-bubble-time {
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            margin-bottom: 2px;
+        }
+
+        /* 麥克風記錄對話框 */
+        .voice-dictation-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 6px;
+        }
+
+        .voice-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(168, 85, 247, 0.1);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            color: var(--accent-purple);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .voice-btn.recording {
+            background: var(--accent-red);
+            color: white;
+            border-color: var(--accent-red);
+            animation: pulse-red 1.2s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .voice-input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-glass);
+            border-radius: 10px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            outline: none;
+        }
+
+        .voice-input:focus {
+            border-color: var(--accent-purple);
+        }
+
+        /* 底部固定導覽列 */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: calc(64px + var(--safe-bottom));
+            background: rgba(7, 11, 21, 0.92);
+            border-top: 1px solid var(--border-glass);
+            backdrop-filter: blur(20px);
+            display: flex;
+            z-index: 10;
+            padding-bottom: var(--safe-bottom);
+        }
+
+        .nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item.active {
+            color: var(--accent-purple);
+        }
+
+        .nav-item span.icon {
+            font-size: 1.3rem;
+            transition: transform 0.2s ease;
+        }
+
+        .nav-item.active span.icon {
+            transform: translateY(-2px) scale(1.15);
+            filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.4));
+        }
+
+        /* 單手 AJAX 微調抽屜 (Bottom Sheet) */
+        .bottom-sheet-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 99;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(3px);
+        }
+
+        .bottom-sheet-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .bottom-sheet {
+            position: fixed;
+            bottom: -100%;
+            left: 0;
+            right: 0;
+            max-height: 85dvh;
+            background: #0f162a;
+            border-top: 1px solid var(--border-glass);
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            z-index: 100;
+            transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 16px 20px calc(24px + var(--safe-bottom)) 20px;
+            overflow-y: auto;
+            box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .bottom-sheet.active {
+            bottom: 0;
+        }
+
+        .bottom-sheet-handle {
+            width: 40px;
+            height: 4px;
+            background: var(--text-muted);
+            border-radius: 2px;
+            margin: 0 auto 6px auto;
+            flex-shrink: 0;
+        }
+
+        .bottom-sheet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 10px;
+        }
+
+        .bottom-sheet-header h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sheet-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .slider-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-glass);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .slider-title-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+
+        .slider-title-row span {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .slider-title-row strong {
+            color: var(--accent-cyan);
+            font-family: monospace;
+        }
+
+        .touch-range {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .touch-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(168, 85, 247, 0.5);
+        }
+
+        .slider-scale {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .sheet-output-section {
+            background: rgba(59, 130, 246, 0.05);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .sheet-output-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #60a5fa;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 6px;
+            margin-bottom: 4px;
+        }
+
+        .output-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+        }
+
+        .output-row span {
+            color: var(--text-secondary);
+        }
+
+        .output-row strong {
+            color: var(--text-primary);
+        }
+
+        .final-bid-price {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px dashed rgba(255, 255, 255, 0.1);
+            padding-top: 8px;
+            margin-top: 4px;
+        }
+
+        .final-bid-price span {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .final-bid-price strong {
+            font-size: 1.4rem;
+            color: var(--accent-green);
+            font-family: monospace;
+        }
+
+        /* Toast 通知 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: rgba(168, 85, 247, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 無障礙提示 */
+        .no-data {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .loader-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 40px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            border-top: 3px solid var(--accent-purple);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 側邊欄抽屜樣式 */
+        .sidebar-drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 199;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(3px);
+        }
+
+        .sidebar-drawer-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+
+        .sidebar-drawer {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100dvh;
+            background: rgba(10, 15, 30, 0.96);
+            border-right: 1px solid var(--border-glass);
+            z-index: 200;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            padding: calc(16px + var(--safe-top)) 20px 20px 20px;
+            box-shadow: 8px 0 40px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+        }
+
+        .sidebar-drawer.active {
+            left: 0;
+        }
+
+        .drawer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .drawer-header .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drawer-header .logo-icon {
+            font-size: 1.2rem;
+        }
+
+        .drawer-header .logo-text {
+            font-size: 1rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #c084fc, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .drawer-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .drawer-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+        }
+
+        .drawer-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .drawer-link:active, .drawer-link:hover {
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-primary);
+        }
+
+        .drawer-link.active {
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(59, 130, 246, 0.15));
+            border-color: rgba(168, 85, 247, 0.25);
+            color: #c084fc;
+        }
+
+        .drawer-link .icon {
+            font-size: 1.1rem;
+        }
+
+        .drawer-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            margin: 8px 0;
+        }
+
+        .drawer-section-title {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 16px;
+            text-transform: uppercase;
+        }
+
+        .back-btn, .hamburger-btn {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }
+
+        .back-btn:active, .hamburger-btn:active {
+            background: rgba(255, 255, 255, 0.08);
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Toast 通知 -->
+    <div class="toast" id="toast"></div>
+
+    <!-- 側邊欄抽屜 (Sidebar Drawer) -->
+    <div class="sidebar-drawer-overlay" id="sidebarDrawerOverlay" onclick="toggleSidebarDrawer(false)"></div>
+    <div class="sidebar-drawer" id="sidebarDrawer">
+        <div class="drawer-header">
+            <div class="logo">
+                <span class="logo-icon">🔍</span>
+                <span class="logo-text">採購爬蟲系統</span>
+            </div>
+            <button class="drawer-close" onclick="toggleSidebarDrawer(false)">&times;</button>
+        </div>
+        <ul class="drawer-links">
+            <li><a href="/" class="drawer-link"><span class="icon">📋</span> 公開徵求</a></li>
+            <li><a href="/bidding" class="drawer-link"><span class="icon">📢</span> 公開招標</a></li>
+            <li><a href="/tracked" class="drawer-link"><span class="icon">⭐</span> 追蹤案件</a></li>
+            <div class="drawer-divider"></div>
+            <div class="drawer-section-title">中台管理</div>
+            <li><a href="/sales" class="drawer-link"><span class="icon">📊</span> 業務中台</a></li>
+            <li><a href="/devices" class="drawer-link"><span class="icon">🖥️</span> 設備管理</a></li>
+            <li><a href="/contacts" class="drawer-link"><span class="icon">📇</span> 企業通訊錄</a></li>
+            <li><a href="/mobile_sales" class="drawer-link active"><span class="icon">📱</span> 行動外勤戰術</a></li>
+            <div class="drawer-divider"></div>
+            <li><a href="/settings" class="drawer-link"><span class="icon">⚙️</span> 系統設定</a></li>
+        </ul>
+    </div>
+
+    <!-- 頂部導覽列 -->
+    <header>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <a href="/sales" class="back-btn" title="返回業務中台">⬅️</a>
+            <button class="hamburger-btn" onclick="toggleSidebarDrawer(true)">☰</button>
+            <div class="header-title" style="margin-left: 2px;">
+                <h1 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                    <span>🛡️</span>
+                    <span style="background: linear-gradient(135deg, #c084fc, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; white-space: nowrap;">行動外勤戰術</span>
+                </h1>
+            </div>
+        </div>
+        <div class="gps-status" id="gpsStatusBlock">
+            <span class="gps-dot" id="gpsDot"></span>
+            <span id="gpsText">定位載入中...</span>
+        </div>
+    </header>
+
+    <!-- 主視圖 -->
+    <div class="main-viewport">
+        
+        <!-- 分頁 1: 雷達地圖 -->
+        <div class="tab-content active" id="radarTab">
+            <div id="radarView">
+                <!-- 地圖 -->
+                <div id="mapContainer"></div>
+                
+                <!-- 地圖頂部控制 -->
+                <div class="map-floating-overlay">
+                    <div class="search-radar-card">
+                        <span style="font-size: 0.8rem; font-weight: 500;">📡 鄰近雷達</span>
+                        <select id="mapRangeFilter" onchange="refreshRadarData()">
+                            <option value="9999">不限距離</option>
+                            <option value="5">方圓 5 公里內</option>
+                            <option value="15">方圓 15 公里內</option>
+                            <option value="30">方圓 30 公里內</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分頁 2: 待辦案源 -->
+        <div class="tab-content" id="todoTab">
+            <div class="tender-list-container" id="todoList">
+                <div class="loader-spinner">
+                    <div class="spinner"></div>
+                    <p>正在搜尋周邊商機...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分頁 3: 聯絡紀錄 -->
+        <div class="tab-content" id="contactsTab">
+            <div class="tender-list-container" id="contactsList">
+                <div class="loader-spinner">
+                    <div class="spinner"></div>
+                    <p>載入企業通訊錄...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 底部固定導覽列 -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" onclick="switchTab('radar')" id="nav-radar">
+            <span class="icon">📡</span>
+            <span>雷達地圖</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('todo')" id="nav-todo">
+            <span class="icon">🎯</span>
+            <span>待辦案源</span>
+        </div>
+        <div class="nav-item" onclick="switchTab('contacts')" id="nav-contacts">
+            <span class="icon">📇</span>
+            <span>通訊/紀錄</span>
+        </div>
+    </nav>
+
+    <!-- 單手 AJAX 微調抽屜 (Bottom Sheet) -->
+    <div class="bottom-sheet-overlay" id="bottomSheetOverlay" onclick="toggleBottomSheet(false)"></div>
+    <div class="bottom-sheet" id="bottomSheet">
+        <div class="bottom-sheet-handle"></div>
+        <div class="bottom-sheet-header">
+            <h3 id="sheetTitle">🎯 方案微調與報價</h3>
+            <button class="sheet-close" onclick="toggleBottomSheet(false)">&times;</button>
+        </div>
+        
+        <input type="hidden" id="sheetTenderId">
+        <input type="hidden" id="sheetContactId">
+        
+        <!-- 微調人數 -->
+        <div class="slider-box">
+            <div class="slider-title-row">
+                <span>預估 VPN 需求人數</span>
+                <strong id="sheetUserVal">50 人</strong>
+            </div>
+            <input type="range" class="touch-range" id="sheetUserRange" min="10" max="1000" step="10" value="50" oninput="document.getElementById('sheetUserVal').textContent = this.value + ' 人'" onchange="sheetTriggerDeviceMatch()">
+            <div class="slider-scale">
+                <span>10人</span>
+                <span>500人</span>
+                <span>1000人</span>
+            </div>
+        </div>
+
+        <!-- 微調毛利 -->
+        <div class="slider-box">
+            <div class="slider-title-row">
+                <span>預期標案毛利率</span>
+                <strong id="sheetMarginVal">15%</strong>
+            </div>
+            <input type="range" class="touch-range" id="sheetMarginRange" min="0.05" max="0.50" step="0.01" value="0.15" oninput="document.getElementById('sheetMarginVal').textContent = Math.round(this.value * 100) + '%'" onchange="sheetTriggerPriceCalculate()">
+            <div class="slider-scale">
+                <span>5%</span>
+                <span>25%</span>
+                <span>50%</span>
+            </div>
+        </div>
+
+        <!-- 方案即時試算產出 -->
+        <div class="sheet-output-section">
+            <div class="sheet-output-title">🖥️ 匹配主推設備 & 報價</div>
+            
+            <div class="output-row" style="margin-bottom: 6px;">
+                <span>推薦頻寬建議:</span>
+                <strong id="sheetOutBandwidth">-- Mbps</strong>
+            </div>
+            <div class="output-row" style="margin-bottom: 6px;">
+                <span>建議設備型號:</span>
+                <strong id="sheetOutDevice">--</strong>
+            </div>
+            <div class="output-row" style="margin-bottom: 6px;">
+                <span>設備硬體成本:</span>
+                <strong id="sheetOutCost" style="color: var(--accent-red);">--</strong>
+            </div>
+            <div class="output-row" style="margin-bottom: 10px;">
+                <span>一般市場定價:</span>
+                <strong id="sheetOutMarket" style="color: var(--accent-purple);">--</strong>
+            </div>
+            
+            <div class="final-bid-price">
+                <span>建議投標價:</span>
+                <strong id="sheetOutBidPrice">$0 元</strong>
+            </div>
+        </div>
+
+        <!-- 一鍵轉發分享 -->
+        <button class="action-button primary" style="width: 100%; padding: 12px 0; font-size: 0.85rem;" onclick="shareSolution()">
+            📱 一鍵複製並分享方案至 LINE
+        </button>
+    </div>
+
+
+    <!-- ==================== JavaScript 業務邏輯 ==================== -->
+    <script>
+        // 全域變數
+        let userLat = null;
+        let userLng = null;
+        let map = null;
+        let contactMarkersGroup = null;
+        let userLocationMarker = null;
+        let allContacts = [];
+        let activeTab = 'radar';
+        let speechRecognition = null;
+        let isRecording = false;
+
+        // 頁面加載初始化
+        document.addEventListener("DOMContentLoaded", () => {
+            initLeafletMap();
+            requestUserLocation();
+            initSpeechRecognition();
+        });
+
+        // 1. 初始化 Leaflet.js 開源地圖
+        function initLeafletMap() {
+            // 預設中心設在台北市信義區
+            const defaultLat = 25.037487;
+            const defaultLng = 121.564766;
+
+            map = L.map('mapContainer', {
+                zoomControl: false, // 手機端點擊按鈕易誤觸，可隱藏
+                attributionControl: false // 隱藏底部標記，保持介面極簡
+            }).setView([defaultLat, defaultLng], 14);
+
+            // 使用 CartoDB Voyager 質感清晰彩色圖資
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            contactMarkersGroup = L.layerGroup().addTo(map);
+        }
+
+        // 2. 請求使用者 GPS 權限與定位
+        function requestUserLocation() {
+            const gpsDot = document.getElementById("gpsDot");
+            const gpsText = document.getElementById("gpsText");
+
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        userLat = position.coords.latitude;
+                        userLng = position.coords.longitude;
+
+                        gpsDot.classList.add("active");
+                        gpsText.textContent = "GPS 已定位";
+
+                        // 更新地圖使用者 Marker
+                        updateUserLocationMarker(userLat, userLng);
+                        
+                        // 載入資料
+                        refreshRadarData();
+                    },
+                    (error) => {
+                        loggerConsole("GPS 定位獲取失敗，採用預設中心座標。");
+                        gpsText.textContent = "GPS 定位失敗";
+                        gpsDot.classList.remove("active");
+                        
+                        // 雖然定位失敗，仍查詢所有資料 (預設 lat/lng 為 null)
+                        refreshRadarData();
+                    },
+                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+                );
+            } else {
+                gpsText.textContent = "不支援定位";
+                refreshRadarData();
+            }
+        }
+
+        // 地圖上的使用者定位點
+        function updateUserLocationMarker(lat, lng) {
+            if (userLocationMarker) {
+                userLocationMarker.setLatLng([lat, lng]);
+            } else {
+                // 精美的藍色呼吸點標記
+                const myIcon = L.divIcon({
+                    className: 'user-gps-marker',
+                    html: `<div style="width: 16px; height: 16px; background: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px #3b82f6;"></div>`,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                userLocationMarker = L.marker([lat, lng], { icon: myIcon }).addTo(map);
+            }
+            map.setView([lat, lng], 14);
+        }
+
+        // 3. 獲取資料並渲染地圖與列表
+        async function refreshRadarData() {
+            const rangeFilter = parseFloat(document.getElementById("mapRangeFilter").value);
+            
+            let url = "/api/mobile/contacts/radar";
+            if (userLat && userLng) {
+                url += `?lat=${userLat}&lng=${userLng}`;
+            }
+
+            try {
+                const resp = await fetch(url);
+                const data = await resp.json();
+                
+                if (data.success) {
+                    allContacts = data.contacts;
+                    
+                    // 過濾距離
+                    let filtered = allContacts;
+                    if (rangeFilter && rangeFilter < 999 && userLat && userLng) {
+                        filtered = allContacts.filter(c => c.distance_km !== null && c.distance_km <= rangeFilter);
+                    }
+
+                    renderMapMarkers(filtered);
+                    renderTendersList(filtered);
+                    renderContactsList(allContacts);
+                } else {
+                    showToast("資料庫載入失敗");
+                }
+            } catch (e) {
+                showToast("網路請求出錯");
+            }
+        }
+
+        // 4. 在 Leaflet 地圖上點綴機關標記
+        function renderMapMarkers(contactsList) {
+            contactMarkersGroup.clearLayers();
+
+            contactsList.forEach(c => {
+                if (c.latitude && c.longitude) {
+                    // 根據潛力等級顯示不同顏色的 Marker
+                    let markerColor = "#10b981"; // 綠色
+                    let score = 0;
+                    if (c.insight) {
+                        score = c.insight.remote_score;
+                        if (score >= 80) markerColor = "#ef4444"; // 紅色
+                        else if (score >= 50) markerColor = "#f97316"; // 橘色
+                    }
+
+                    const pinIcon = L.divIcon({
+                        className: 'tender-pin',
+                        html: `<div style="width: 24px; height: 24px; border-radius: 50% 50% 50% 0; background: ${markerColor}; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.35); box-shadow: 0 3px 6px rgba(0,0,0,0.3);"><span style="transform: rotate(45deg); font-size: 0.6rem; font-weight: bold; color: white;">${score}</span></div>`,
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 24]
+                    });
+
+                    // 泡泡 Popup 資訊
+                    let popupContent = `
+                        <div style="font-family: sans-serif; color: #1e293b; padding: 4px; min-width: 160px;">
+                            <h4 style="font-size: 0.85rem; margin-bottom: 4px; font-weight: bold;">${c.org_name}</h4>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 2px;">承辦: ${c.contact_name || '無'}</p>
+                            <p style="font-size: 0.75rem; color: #64748b; margin-bottom: 6px;">主推: ${c.primary_device}</p>
+                            <div style="display: flex; gap: 6px;">
+                                <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}" target="_blank" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; text-decoration: none; display: inline-block;">🧭 導航</a>
+                                <button onclick="openFormFromMap(${c.id})" style="background: #a855f7; color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; cursor: pointer;">🎯 方案</button>
+                            </div>
+                        </div>
+                    `;
+
+                    L.marker([c.latitude, c.longitude], { icon: pinIcon })
+                        .bindPopup(popupContent)
+                        .addTo(contactMarkersGroup);
+                }
+            });
+        }
+
+        // 點擊地圖按鈕，切換到該案件的資訊微調 drawer
+        function openFormFromMap(contactId) {
+            map.closePopup();
+            switchTab('todo');
+            
+            // 捲動到該卡片並展開
+            setTimeout(() => {
+                const el = document.getElementById(`todo-card-${contactId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // 自動拉起微調
+                    const contact = allContacts.find(c => c.id === contactId);
+                    if (contact && contact.insight) {
+                        openBottomSheet(contact.source_tender_id, contactId);
+                    }
+                }
+            }, 300);
+        }
+
+        // 5. 渲染待辦案源列表 (分頁 2)
+        function renderTendersList(contactsList) {
+            const container = document.getElementById("todoList");
+            
+            // 僅顯示有 source_tender_id 的案件
+            const bids = contactsList.filter(c => c.source_tender_id);
+
+            if (bids.length === 0) {
+                container.innerHTML = `<div class="no-data">📡 周邊方圓內暫無高潛力採購標案</div>`;
+                return;
+            }
+
+            container.innerHTML = bids.map(c => {
+                const score = c.insight ? c.insight.remote_score : 0;
+                let scoreClass = "score-low";
+                if (score >= 80) scoreClass = "score-high";
+                else if (score >= 50) scoreClass = "score-med";
+
+                const distText = c.distance_km !== null ? `🧭 距離 ${c.distance_km} km` : "📍 點擊定位";
+                const priceText = c.insight && c.insight.suggested_bid_price > 0 
+                    ? `$${Number(c.insight.suggested_bid_price).toLocaleString()} 元` 
+                    : "⏳ 待估算";
+
+                return `
+                    <div class="mobile-card high-potential" id="todo-card-${c.id}">
+                        <div class="card-header-row">
+                            <span class="score-badge ${scoreClass}">潛力 ${score}分</span>
+                            <span style="font-size: 0.75rem; color: var(--accent-cyan); font-weight: 500;">${distText}</span>
+                        </div>
+                        
+                        <div class="card-title">${c.org_name} - ${(c.notes ? c.notes.split('\n')[0].replace('從案號 ', '').replace(' 自動同步', '') : '') || '網路建置標案'}</div>
+                        
+                        <div class="card-body-meta">
+                            <div class="meta-item">
+                                <span class="meta-label">預算金額</span>
+                                <span class="meta-val budget-color">${c.insight ? (c.insight.price_source.includes('成本') ? '成本推估' : '未公告') : '未公告'}</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">案號</span>
+                                <span class="meta-val" style="font-family: monospace;">${c.source_tender_id}</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">承辦窗口</span>
+                                <span class="meta-val">${c.contact_name || '無'}</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">電話</span>
+                                <span class="meta-val">${c.phone || '無'}</span>
+                            </div>
+                        </div>
+
+                        <div class="card-recommendations">
+                            <div class="recommendation-row">
+                                <span>匹配主推設備:</span>
+                                <strong>${c.primary_device}</strong>
+                            </div>
+                            <div class="recommendation-row">
+                                <span>建議投標價:</span>
+                                <strong style="color: var(--accent-green); font-family: monospace;">${priceText}</strong>
+                            </div>
+                        </div>
+
+                        <div class="card-actions-grid">
+                            <button class="action-button nav-btn" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}')">
+                                🧭 導航
+                            </button>
+                            <button class="action-button" onclick="openBottomSheet('${c.source_tender_id}', ${c.id})" style="border-color: var(--accent-purple); color: #c084fc;">
+                                ⚙️ 微調
+                            </button>
+                            <button class="action-button primary" onclick="shareDirect('${c.id}')">
+                                📱 快抄
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 6. 渲染聯絡通訊錄與互動紀錄 (分頁 3)
+        function renderContactsList(contactsList) {
+            const container = document.getElementById("contactsList");
+
+            if (contactsList.length === 0) {
+                container.innerHTML = `<div class="no-data">📇 尚無聯絡人資料，請先至業務儀表板同步</div>`;
+                return;
+            }
+
+            container.innerHTML = contactsList.map(c => {
+                // 互動紀錄列表 HTML
+                let logsHtml = `<p style="font-size: 0.7rem; color: var(--text-muted); text-align: center;">暫無訪問日誌</p>`;
+                if (c.interaction_logs && c.interaction_logs.length > 0) {
+                    logsHtml = c.interaction_logs.map(log => `
+                        <div class="log-bubble">
+                            <div class="log-bubble-time">⏰ ${log.created_at}</div>
+                            <div style="line-height: 1.3;">${log.content_text}</div>
+                        </div>
+                    `).join('');
+                }
+
+                return `
+                    <div class="mobile-card" id="contact-card-${c.id}" style="border-left: 3px solid var(--accent-cyan);">
+                        <div class="card-header-row">
+                            <strong style="color: var(--text-primary); font-size: 0.95rem;">📇 ${c.contact_name || '未提供姓名'} (${c.title || '承辦人'})</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">${c.org_name}</span>
+                        </div>
+                        
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 4px;">
+                            <div>📞 電話: <a href="tel:${c.phone || c.mobile}" style="color: var(--accent-cyan); font-weight: 500;">${c.phone || c.mobile || '無'}</a></div>
+                            <div>📍 地址: <span style="color: var(--text-primary);">${c.address || '無'}</span></div>
+                        </div>
+
+                        <!-- 互動紀錄容器 -->
+                        <div class="contact-detail-box">
+                            <div class="contact-detail-title">📝 外勤隨手記 & 歷史日誌</div>
+                            <div class="interaction-logs-list" id="logs-container-${c.id}">
+                                ${logsHtml}
+                            </div>
+                            
+                            <!-- 語音辨識錄音條 -->
+                            <div class="voice-dictation-bar">
+                                <button class="voice-btn" id="voice-btn-${c.id}" onclick="toggleSpeechRecording(${c.id})">🎙️</button>
+                                <input type="text" class="voice-input" id="voice-input-${c.id}" placeholder="點擊左側麥克風說話，或在此輸入...">
+                                <button class="action-button primary" onclick="submitInteractionLog(${c.id})" style="padding: 0 10px; height: 34px; font-size: 0.75rem; flex-shrink: 0; border-radius: 8px;">
+                                    保存
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 7. 分頁切換器
+        function switchTab(tabName) {
+            activeTab = tabName;
+            
+            // 移除所有導覽與分頁 active
+            document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+            document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+            
+            // 設定 active
+            document.getElementById(`nav-${tabName}`).classList.add("active");
+            document.getElementById(`${tabName}Tab`).classList.add("active");
+            
+            // 若切換到地圖，觸發地圖大小重算防止顯示破碎
+            if (tabName === 'radar' && map) {
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+            }
+        }
+
+        // 8. 展開/收合底部單手微調抽屜
+        async function openBottomSheet(tenderId, contactId) {
+            const contact = allContacts.find(c => c.id === contactId);
+            if (!contact || !contact.insight) {
+                showToast("無關聯的業務洞察資料");
+                return;
+            }
+
+            document.getElementById("sheetTenderId").value = tenderId;
+            document.getElementById("sheetContactId").value = contactId;
+            document.getElementById("sheetTitle").innerHTML = `🎯 報價決策: ${contact.org_name}`;
+
+            const ins = contact.insight;
+            const users = ins.estimated_users || 50;
+            const margin = parseFloat(ins.margin_rate || 0.15);
+
+            // 初始化 Slider 數值
+            document.getElementById("sheetUserRange").value = users;
+            document.getElementById("sheetUserVal").textContent = `${users} 人`;
+
+            document.getElementById("sheetMarginRange").value = margin;
+            document.getElementById("sheetMarginVal").textContent = `${Math.round(margin * 100)}%`;
+
+            // 渲染輸出結果
+            renderSheetOutputBox(ins);
+
+            // 拉起 Drawer
+            toggleBottomSheet(true);
+        }
+
+        function toggleBottomSheet(show) {
+            const overlay = document.getElementById("bottomSheetOverlay");
+            const sheet = document.getElementById("bottomSheet");
+            
+            if (show) {
+                overlay.classList.add("active");
+                sheet.classList.add("active");
+            } else {
+                overlay.classList.remove("active");
+                sheet.classList.remove("active");
+                // 關閉時自動刷新
+                refreshRadarData();
+            }
+        }
+
+        function renderSheetOutputBox(ins) {
+            document.getElementById("sheetOutBandwidth").textContent = ins.vpn_bandwidth_mbps ? `${ins.vpn_bandwidth_mbps} Mbps` : "-- Mbps";
+            
+            let primaryName = "—";
+            let cost = "--";
+            let market = "--";
+            let suggested = "$0 元";
+
+            if (ins.recommended_devices_json && ins.recommended_devices_json !== "[]") {
+                try {
+                    const devices = JSON.parse(ins.recommended_devices_json);
+                    if (devices && devices.length > 0) {
+                        const dev = devices[0];
+                        primaryName = `${dev.brand} ${dev.model}`;
+                        cost = dev.cost_price ? `$${Number(dev.cost_price).toLocaleString()} 元` : "無成本資料";
+                        market = dev.reference_price ? `$${Number(dev.reference_price).toLocaleString()} 元` : "--";
+                    }
+                } catch(e){}
+            }
+
+            if (ins.suggested_bid_price && ins.suggested_bid_price > 0) {
+                suggested = `$${Number(ins.suggested_bid_price).toLocaleString()} 元`;
+            }
+
+            document.getElementById("sheetOutDevice").textContent = primaryName;
+            document.getElementById("sheetOutCost").textContent = cost;
+            document.getElementById("sheetOutMarket").textContent = market;
+            document.getElementById("sheetOutBidPrice").textContent = suggested;
+        }
+
+        // Drawer 微調 AJAX: 觸發設備匹配
+        async function sheetTriggerDeviceMatch() {
+            const tenderId = document.getElementById("sheetTenderId").value;
+            const users = parseInt(document.getElementById("sheetUserRange").value);
+
+            try {
+                const resp = await fetch(`/api/insights/${tenderId}/match-device`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ estimated_users: users })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    // 自動進行一次報價重算
+                    await sheetTriggerPriceCalculate();
+                } else {
+                    showToast(data.message);
+                }
+            } catch(e) {
+                showToast("連線匹配設備失敗");
+            }
+        }
+
+        // Drawer 微調 AJAX: 觸發標價推估
+        async function sheetTriggerPriceCalculate() {
+            const tenderId = document.getElementById("sheetTenderId").value;
+            const margin = parseFloat(document.getElementById("sheetMarginRange").value);
+
+            try {
+                const resp = await fetch(`/api/insights/${tenderId}/calculate-price`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ margin_rate: margin })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    // 更新全域快取
+                    const contactId = parseInt(document.getElementById("sheetContactId").value);
+                    const idx = allContacts.findIndex(c => c.id === contactId);
+                    if (idx !== -1) {
+                        allContacts[idx].insight = data.insight;
+                    }
+                    
+                    renderSheetOutputBox(data.insight);
+                    showToast("決策重算完成", 1000);
+                } else {
+                    showToast(data.message);
+                }
+            } catch(e) {
+                showToast("連線重算報價失敗");
+            }
+        }
+
+        // 9. HTML5 Web Speech 語音轉文字
+        function initSpeechRecognition() {
+            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (Speech) {
+                speechRecognition = new Speech();
+                speechRecognition.continuous = false;
+                speechRecognition.lang = 'zh-TW'; // 繁體中文支援
+                speechRecognition.interimResults = false;
+
+                speechRecognition.onstart = () => {
+                    isRecording = true;
+                    showToast("🎙️ 正在說話錄音中...");
+                };
+
+                speechRecognition.onresult = (event) => {
+                    const resultText = event.results[0][0].transcript;
+                    loggerConsole("語音辨識產出: " + resultText);
+                    
+                    // 填入當前錄音聯絡人的 Input
+                    const activeContactId = window.activeRecordingContactId;
+                    const inputEl = document.getElementById(`voice-input-${activeContactId}`);
+                    if (inputEl) {
+                        if (inputEl.value) {
+                            inputEl.value = inputEl.value + " " + resultText;
+                        } else {
+                            inputEl.value = resultText;
+                        }
+                    }
+                };
+
+                speechRecognition.onerror = (e) => {
+                    loggerConsole("語音辨識出錯", e);
+                    showToast("❌ 語音辨識未成功，請再試一次");
+                    stopSpeechRecordingUI();
+                };
+
+                speechRecognition.onend = () => {
+                    stopSpeechRecordingUI();
+                };
+            } else {
+                loggerConsole("瀏覽器不支援 HTML5 Web Speech API");
+            }
+        }
+
+        function toggleSpeechRecording(contactId) {
+            if (!speechRecognition) {
+                showToast("此瀏覽器不支援語音輸入，請手寫輸入");
+                return;
+            }
+
+            if (isRecording) {
+                speechRecognition.stop();
+                stopSpeechRecordingUI();
+            } else {
+                window.activeRecordingContactId = contactId;
+                
+                // 將對應按鈕設為錄音狀態
+                const btn = document.getElementById(`voice-btn-${contactId}`);
+                if (btn) btn.classList.add("recording");
+                
+                speechRecognition.start();
+            }
+        }
+
+        function stopSpeechRecordingUI() {
+            isRecording = false;
+            document.querySelectorAll(".voice-btn").forEach(el => el.classList.remove("recording"));
+        }
+
+        // 10. 送出訪問備註寫入 DB
+        async function submitInteractionLog(contactId) {
+            const inputEl = document.getElementById(`voice-input-${contactId}`);
+            const textContent = inputEl.value.trim();
+
+            if (!textContent) {
+                showToast("內容不能為空");
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/mobile/contacts/${contactId}/log`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content_text: textContent })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    showToast("訪問日誌已保存！", 1500);
+                    inputEl.value = ""; // 清空
+                    
+                    // 重新載入列表以更新 logs
+                    await refreshRadarData();
+                } else {
+                    showToast(data.message);
+                }
+            } catch (e) {
+                showToast("發送訪問紀錄失敗");
+            }
+        }
+
+        // 11. 方案分享與 LINE 轉發
+        function formatSolutionMessage(contact) {
+            const ins = contact.insight;
+            if (!ins) return "";
+            
+            let primaryDevice = contact.primary_device;
+            let bandwidth = ins.vpn_bandwidth_mbps ? `${ins.vpn_bandwidth_mbps} Mbps` : "依實測為準";
+            let priceText = ins.suggested_bid_price > 0 ? `$${Number(ins.suggested_bid_price).toLocaleString()} 元` : "待研議";
+
+            // 構建極具商業專業性的文字範本
+            return `【政府採購網 — 業務中台方案快抄】
+機關名稱：${contact.org_name}
+採購案號：${contact.source_tender_id}
+標案承辦人：${contact.contact_name || '無'} (${contact.title || '承辦人'})
+承辦人電話：${contact.phone || '無'}
+
+【技術網路方案匹配 (Module B)】
+VPN 估計人數：${ins.estimated_users} 人
+建議 VPN 總頻寬：${bandwidth}
+主推網通設備：${primaryDevice}
+規格能力：最大並行通道與安全流量最佳匹配
+
+【商務投標評估價格 (Module C)】
+預期毛利率設定：${Math.round(parseFloat(ins.margin_rate)*100)}%
+建議最低標價：${priceText}
+(此報價由網通設備硬體成本加乘估算，已為您準備完整 vCard 客戶資訊，請內勤核對或向 SI 廠商直接發送報價單！)`;
+        }
+
+        // 待辦案源點擊「快抄」
+        function shareDirect(contactId) {
+            const contact = allContacts.find(c => c.id === contactId);
+            if (!contact || !contact.insight) {
+                showToast("無可分享的微調方案結果");
+                return;
+            }
+
+            const msgText = formatSolutionMessage(contact);
+            
+            // 複製到剪貼簿
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(msgText).then(() => {
+                    showToast("📋 方案已複製！正在跳轉至 LINE...", 2000);
+                    setTimeout(() => {
+                        // 調起 LINE
+                        window.open(`line://msg/text/?${encodeURIComponent(msgText)}`, "_blank");
+                    }, 800);
+                }).catch(() => {
+                    fallbackCopyAndLine(msgText);
+                });
+            } else {
+                fallbackCopyAndLine(msgText);
+            }
+        }
+
+        // 微調抽屜點擊「複製並分享」
+        function shareSolution() {
+            const contactId = parseInt(document.getElementById("sheetContactId").value);
+            toggleBottomSheet(false); // 先關閉抽屜
+            setTimeout(() => {
+                shareDirect(contactId);
+            }, 300);
+        }
+
+        // 剪貼簿備用方案
+        function fallbackCopyAndLine(text) {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand("copy");
+                showToast("📋 方案已複製(備用)！跳轉 LINE...", 2000);
+                setTimeout(() => {
+                    window.open(`line://msg/text/?${encodeURIComponent(text)}`, "_blank");
+                }, 800);
+            } catch (err) {
+                showToast("無法複製，請手動複製網頁內容");
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // 輔助 Toast 機制
+        let toastTimeout = null;
+        function showToast(msg, duration = 2000) {
+            const toast = document.getElementById("toast");
+            toast.textContent = msg;
+            toast.classList.add("show");
+            
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toast.classList.remove("show");
+            }, duration);
+        }
+
+        // 側邊欄抽屜顯示/隱藏切換
+        function toggleSidebarDrawer(show) {
+            const overlay = document.getElementById("sidebarDrawerOverlay");
+            const drawer = document.getElementById("sidebarDrawer");
+            if (show) {
+                overlay.classList.add("active");
+                drawer.classList.add("active");
+            } else {
+                overlay.classList.remove("active");
+                drawer.classList.remove("active");
+            }
+        }
+
+        // 安全日誌輸出
+        function loggerConsole(msg, ex = null) {
+            if (ex) {
+                console.error("[MobileSales] " + msg, ex);
+            } else {
+                console.log("[MobileSales] " + msg);
+            }
+        }
+    </script>
+</body>
+</html>

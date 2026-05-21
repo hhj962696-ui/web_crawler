@@ -8,9 +8,9 @@ from datetime import datetime
 from time_utils import format_tw, discord_timestamp
 from sqlalchemy import (
     create_engine, Column, Integer, String, Text,
-    Boolean, DateTime, event
+    Boolean, DateTime, event, Float, ForeignKey
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from config import config
 
 Base = declarative_base()
@@ -281,8 +281,13 @@ class OrgContact(Base):
     tags = Column(String(500), default="")
     notes = Column(Text, default="")
     is_active = Column(Boolean, default=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    # 關聯聯絡人互動紀錄 (依時間由新到舊排序)
+    interaction_logs = relationship("ContactLog", back_populates="contact", cascade="all, delete-orphan", order_by="desc(ContactLog.created_at)")
 
     def to_dict(self):
         return {
@@ -300,8 +305,33 @@ class OrgContact(Base):
             "tags": self.tags,
             "notes": self.notes,
             "is_active": self.is_active,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "interaction_logs": [log.to_dict() for log in self.interaction_logs] if self.interaction_logs else [],
             "created_at": format_tw(self.created_at),
             "updated_at": format_tw(self.updated_at),
+        }
+
+
+class ContactLog(Base):
+    """聯絡人互動紀錄資料表"""
+    __tablename__ = "contact_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    contact_id = Column(Integer, ForeignKey("org_contacts.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    content_text = Column(Text, default="")
+    voice_url = Column(String(500), default="")
+
+    contact = relationship("OrgContact", back_populates="interaction_logs")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "contact_id": self.contact_id,
+            "created_at": format_tw(self.created_at),
+            "content_text": self.content_text,
+            "voice_url": self.voice_url,
         }
 
 
@@ -348,6 +378,29 @@ SessionLocal = sessionmaker(bind=engine)
 def init_db():
     """初始化資料庫，建立所有資料表"""
     Base.metadata.create_all(engine)
+    
+    # 自動進行欄位擴充 (Schema Migration)
+    # 檢查 org_contacts 是否已有 latitude/longitude 欄位
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        # PRAGMA 不需要事務，可以直接執行
+        result = db.execute(text("PRAGMA table_info(org_contacts)"))
+        columns = [row[1] for row in result.fetchall()]
+        
+        if "latitude" not in columns:
+            db.execute(text("ALTER TABLE org_contacts ADD COLUMN latitude FLOAT"))
+            db.commit()
+            print("Database Migration: Added latitude column to org_contacts table.")
+        if "longitude" not in columns:
+            db.execute(text("ALTER TABLE org_contacts ADD COLUMN longitude FLOAT"))
+            db.commit()
+            print("Database Migration: Added longitude column to org_contacts table.")
+    except Exception as e:
+        print(f"Database Migration Warning: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 def get_db():

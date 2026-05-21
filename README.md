@@ -29,6 +29,7 @@
 | **Phase 4** | **設備匹配引擎 (模組 B)** | 研發 **模組 B** 需求計算引擎。自動根據案源規模或預估使用者數，帶入 70% 同時上線率與 2Mbps 頻寬標準，推算 VPN 隧道與頻寬需求，自動從設備庫中匹配出性價比最高的前三台設備。 |
 | **Phase 5** | **報價與比價引擎 (模組 C)** | 研發 **模組 C** 動態報價引擎與競品監控。支援記錄設備歷史決標價與多通路市場價（`price_history`），並依據匹配推薦設備的**公司成本價**，結合設定的**目標毛利率**，使用專業毛利公式自動計算「建議投標標價」。 |
 | **Phase 6** | **業務中台與全面整合** | 進入 **階段 6**，實作一個暗黑科技感 Glassmorphism 整合業務儀表板 `/sales`。提供統計數據與前 5 大設備熱度排行。實作 AJAX 雙滑桿微調抽屜面板，業務可即時微調估計人數與毛利率，無痛動態重算設備匹配與標價。整合每日 17:00 Discord 業務摘要推播與一鍵承辦人同步通訊錄。 |
+| **Phase 7** | **行動戰術面板與全響應式中台** | 進入 **階段 7**，實作 PWA 行動端定位 LBS 戰術面板 `/mobile_sales`。對接 OSM Nominatim 自動編碼與 HTML5 語音識別。重構桌面版業務儀表板 `/sales`，將佈局升級為 3:9 大螢幕比例，並全面優化行動端折疊、主商機優先排序、橫向自適應滾動表單與防冒泡漢堡選單。 |
 
 
 ---
@@ -148,17 +149,20 @@ web_crawler/
 ├── scheduler.py           # APScheduler 自動化定時任務管理
 ├── models.py              # SQLAlchemy ORM 資料庫模型定義 (SQLite 欄位結構)
 ├── config.py              # 系統環境變數與全域設定項目
+├── seed_addresses.py      # 台灣主要行政機關地址與 LBS 經緯度座標測試數據種子腳本
 ├── routers/               # API 路由分流目錄
 │   ├── devices.py         # 設備型號管理 (CRUD) API 與 UI 路由
 │   ├── contacts.py        # 企業通訊錄 API 與 UI 路由
 │   ├── insights.py        # 業務洞察、設備匹配與報價手動調整 API
-│   └── prices.py          # 設備價格歷史記錄與趨勢查詢 API
+│   ├── prices.py          # 設備價格歷史記錄與趨勢查詢 API
+│   └── mobile.py          # 行動 LBS 戰術、地理座標微調與語音日誌 API
 ├── templates/             # Jinja2 HTML5 網頁樣板目錄
 │   ├── base.html          # 全域導覽列與玻璃擬物化佈局基礎樣板
 │   ├── index.html         # 公開徵求列表與搜尋管理
 │   ├── bidding.html       # 公開招標列表與押標金展示
 │   ├── tracked.html       # 追蹤案件管理與備註編輯
 │   ├── sales_dashboard.html # 業務中台儀表板與 AJAX 決策微調抽屜
+│   ├── mobile_sales.html  # 行動端 LBS 雷達地圖、語音回報與 LINE 深度連結戰術面板
 │   ├── devices.html       # 設備庫管理面板
 │   ├── contacts.html      # 企業通訊錄面板
 │   └── settings.html      # 系統關鍵字、排程與 Webhook 設定面板
@@ -166,7 +170,7 @@ web_crawler/
 │   ├── css/
 │   │   └── style.css      # 精美現代暗黑模式 CSS 設計系統
 │   └── js/
-│       └── main.js        # 前端 Toast 通知與爬蟲狀態同步邏輯
+│       └── main.js        # 前端 Toast 通知、爬蟲狀態與防冒泡漢堡選單邏輯
 └── database.db            # 核心 SQLite 本地資料庫 (啟動時會自動完成 init 初始化)
 ```
 
@@ -209,7 +213,7 @@ python run.py
 
 ## 資料儲存說明
 
-系統擁有五張業務中台關聯表：
+系統擁有六張業務中台關聯表：
 1. **`sales_insights`（業務洞察表）**：
    - 關聯鍵：`tender_id`（與 tenders 或 bidding_tenders 案號關聯）
    - **模組 A**：`remote_score` (遠端分數), `remote_job_count` (遠端職缺數), `netadmin_job_count` (網管職缺數), `job_analysis_json` (職缺明細 JSON)
@@ -220,8 +224,12 @@ python run.py
 3. **`price_history`（價格歷史表）**：
    - 紀錄設備價格歷史軌跡。`price_type` 支援 `market` (市場參考價)、`bid_award` (歷史招標決標價) 及 `ecommerce` (電商促銷價)。
 4. **`org_contacts`（企業通訊錄）**：
-   - 紀錄從招標文件自動萃取或手動新增的機關聯絡人（姓名、電話、手機、電子信箱、部門職稱及所屬案號）。
-5. **`analysis_logs`（分析執行紀錄）**：
+   - 紀錄從招標文件自動萃取或手動新增的機關聯絡人（姓名、電話、手機、電子信箱、部門職稱、所屬案號）。
+   - **Phase 7 新增**：`latitude` (地理緯度), `longitude` (地理經度)，用作 LBS 雷達定位。
+5. **`contact_logs`（外勤語音聯絡日誌表，Phase 7 新增）**：
+   - 紀錄外勤人員在行動端戰術面板使用語音回報之聯絡日誌。
+   - 紀錄 `id` (主鍵), `contact_id` (關聯通訊錄聯絡人), `log_type` (日誌類型，目前預設為 `'voice'`), `content` (語音辨識文字內容), `created_at` (建立時間)。
+6. **`analysis_logs`（分析執行紀錄）**：
    - 紀錄管線模組的執行狀態、耗時及錯誤日誌（分為 `job104`、`device`、`pricing` 模組）。
 
 ---
@@ -269,6 +277,17 @@ python run.py
 | POST | `/api/job104/manual` | 無 | 手動觸發 104 人力銀行探測器分析（背景批次處理）。 |
 | GET | `/api/scrape/status` | 無 | 查詢當前是否有爬蟲或分析管線正在背景執行。 |
 
+### 5. 行動 LBS 與語音日誌 API (routers/mobile.py & app.py)
+
+| 方法 | 路徑 | 參數 | 說明 |
+|:---|:---|:---|:---|
+| GET | `/mobile_sales` | 無 | 渲染外勤業務專屬 PWA 行動 LBS 戰術面板。 |
+| GET | `/api/mobile/radar` | Query: `lat` (float), `lng` (float), `radius` (float) | 雷達半徑搜尋：利用 Haversine 距離公式排序附近的客戶，預設 50 公里。 |
+| POST | `/api/mobile/geocode` | JSON: `{"contact_id": int, "address": str}` | 將地址進行 OSM Nominatim 地理編碼，取得經緯度並更新至 `OrgContact`。 |
+| POST | `/api/mobile/location` | JSON: `{"contact_id": int, "latitude": float, "longitude": float}` | 外勤人員手動於地圖上拖曳微調該客戶的經緯度座標。 |
+| POST | `/api/mobile/voice-log` | JSON: `{"contact_id": int, "content": str}` | 接收語音辨識文字，寫入語音聯絡日誌庫中。 |
+| GET | `/api/mobile/logs/{contact_id}` | 路徑參數 `contact_id` | 取得特定聯絡人的歷史語音聯絡回報日誌。 |
+
 ---
 
 ## 已知問題與排除
@@ -276,6 +295,7 @@ python run.py
 1. **Selenium 驅動問題**：爬蟲與 104 探測器需要 Chrome 瀏覽器。若伺服器未安裝 Chrome，系統會自動切換為備用的 headless 模擬模式。本機 Windows 開發環境請確保 Chrome 瀏覽器已更新至最新版。
 2. **SQLite 鎖定 (Database is locked)**：因為爬蟲與 Web 服務可能同時寫入資料庫，本系統已全域啟用 **PRAGMA journal_mode=WAL**。此模式允許讀寫並行，大幅降低資料庫鎖定機率。
 3. **104 爬蟲 IP 阻擋**：頻繁手動執行 104 探測可能觸發防爬機制。系統已內建隨機延遲（Random Delay）與請求標頭混淆機制。建議維持每日定時排程執行即可，避免高頻率手動重試。
+4. **OSM Nominatim 地理編碼限制**：為遵守 OSM 嚴格的使用政策，地理編碼 API 已實作客製化且唯一的 `User-Agent`，並加入請求延遲（Throttling），確保系統在生產環境運作時不被阻擋。
 
 ---
-*最後更新時間：2026-05-21 — 全面完成模組 A、B、C 研發，打通「採購網爬取 ➜ 104 潛力探測 ➜ 設備需求匹配 ➜ 動態毛利報價」的自動化業務閉環。*
+*最後更新時間：2026-05-21 — 全面完成模組 A、B、C 及行動戰術 LBS 中台（Phase 7）研發，打通「採購網爬取 ➜ 104 潛力探測 ➜ 設備需求匹配 ➜ 動態毛利報價 ➜ LBS 行動定位與語音日誌」的自動化與移動業務閉環。*

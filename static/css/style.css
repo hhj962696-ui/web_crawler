@@ -1210,6 +1210,65 @@ a:hover {
     font-size: 14px;
 }
 
+/* === General Card === */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    backdrop-filter: blur(12px);
+    box-shadow: var(--shadow-md);
+    margin-bottom: 1.5rem;
+}
+
+/* === General Tables === */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 1rem;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+}
+
+.table {
+    width: 100%;
+    min-width: 850px;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.table th {
+    padding: 1rem 1.25rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.table td * {
+    white-space: nowrap;
+}
+
+.table tbody tr {
+    transition: background-color var(--transition-fast);
+}
+
+.table tbody tr:hover {
+    background-color: var(--bg-glass-hover);
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
     .sidebar {

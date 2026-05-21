@@ -32,7 +32,7 @@ from discord_notifier import (
     send_manual_push_bidding_notification,
 )
 
-from routers import devices, contacts, insights, prices
+from routers import devices, contacts, insights, prices, mobile
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ app.include_router(devices.router)
 app.include_router(contacts.router)
 app.include_router(insights.router)
 app.include_router(prices.router)
+app.include_router(mobile.router)
 
 # 靜態檔案與模板
 BASE_DIR = Path(__file__).resolve().parent
