@@ -43,6 +43,21 @@
                     {% endif %}
                 </a>
             </li>
+            <li class="nav-divider" style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.1);"></li>
+            <li class="nav-header" style="color: #95a5a6; font-size: 0.8rem; padding: 5px 20px; text-transform: uppercase;">中台管理 (New)</li>
+            <li>
+                <a href="/devices" class="nav-link {% if active_page == 'devices' %}active{% endif %}" id="nav-devices">
+                    <span class="nav-icon">🖥️</span>
+                    <span class="nav-text">設備管理</span>
+                </a>
+            </li>
+            <li>
+                <a href="/contacts" class="nav-link {% if active_page == 'contacts' %}active{% endif %}" id="nav-contacts">
+                    <span class="nav-icon">📇</span>
+                    <span class="nav-text">企業通訊錄</span>
+                </a>
+            </li>
+            <li class="nav-divider" style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.1);"></li>
             <li>
                 <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}" id="nav-settings">
                     <span class="nav-icon">⚙️</span>
