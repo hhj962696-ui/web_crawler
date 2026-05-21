@@ -48,6 +48,7 @@ DETAIL_FIELD_LABELS = {
     "phone": ("電話", "聯絡電話", "聯絡電話號碼", "分機"),
     "budget": ("預算金額", "預算", "採購金額", "契約金額", "公告金額"),
     "org_name": ("招標機關", "機關名稱", "採購機關"),
+    "bid_bond": ("是否須繳納押標金", "押標金"),
 }
 
 DETAIL_URL_MARKERS = ("urlSelector/common/tpAppeal", "readTpAppeal")
@@ -273,6 +274,24 @@ def _assign_detail_field(parsed: dict[str, str], field: str, value: str):
         elif len(cleaned) < len(existing) and not _phone_field_is_corrupt(cleaned):
             parsed[field] = cleaned
         return
+        
+    if field == "bid_bond":
+        if "否" in value[:5] or "無" in value[:5] or value == "否":
+            parsed[field] = "無"
+        else:
+            match = re.search(r'押標金額度[：:\s]*(.+?)(?:機關押標金|。|；|$)', value)
+            if match:
+                res = match.group(1).replace("一定金額：", "").replace("一定金額:", "").strip()
+                if re.match(r'^\d+$', res):
+                    res = f"{int(res):,}元"
+                elif re.match(r'^\d+(,\d+)+$', res):
+                    res = f"{res}元"
+                parsed[field] = res
+            elif "是" in value[:5]:
+                parsed[field] = "有"
+            else:
+                parsed[field] = "無"
+        return
 
     # 其他欄位：保留較長/較完整的值
     if field not in parsed or len(value) > len(parsed.get(field, "")):
@@ -406,7 +425,7 @@ def _enrich_tender_from_detail(driver: webdriver.Chrome, tender: dict) -> dict:
         page_source = _load_detail_page(driver, url)
         detail = _parse_detail_page(page_source)
 
-        for field in ("tender_name", "contact_person", "phone", "budget", "org_name", "status"):
+        for field in ("tender_name", "contact_person", "phone", "budget", "org_name", "status", "bid_bond"):
             value = detail.get(field, "").strip()
             if not value:
                 continue
@@ -694,7 +713,7 @@ def run_scraper(
             existing = db.query(Tender).filter_by(tender_id=tid).first()
             if existing:
                 changed = False
-                for field in ["tender_name", "org_name", "contact_person", "phone", "budget", "tender_url"]:
+                for field in ["tender_name", "org_name", "contact_person", "phone", "budget", "tender_url", "bid_bond"]:
                     new_val = tender_data.get(field, "").strip()
                     if new_val and new_val != getattr(existing, field, ""):
                         setattr(existing, field, new_val)
@@ -707,7 +726,7 @@ def run_scraper(
                     )
                     if enrich_data["tender_url"]:
                         _enrich_tender_from_detail(driver, enrich_data)
-                        for field in ["tender_name", "contact_person", "phone", "budget", "org_name"]:
+                        for field in ["tender_name", "contact_person", "phone", "budget", "org_name", "bid_bond"]:
                             val = enrich_data.get(field, "").strip()
                             if val and val != getattr(existing, field, ""):
                                 setattr(existing, field, val)
@@ -736,6 +755,7 @@ def run_scraper(
                 budget=tender_data.get("budget", "").strip(),
                 tender_url=tender_data.get("tender_url", "").strip(),
                 status=tender_data.get("status", "公開徵求") or "公開徵求",
+                bid_bond=tender_data.get("bid_bond", "").strip(),
                 scraped_at=scraped_now.replace(tzinfo=None),
                 created_at=scraped_now.replace(tzinfo=None),
                 updated_at=scraped_now.replace(tzinfo=None),

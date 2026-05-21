@@ -231,7 +231,7 @@ def _enrich_bidding_from_detail(driver, tender: dict) -> dict:
     try:
         page_source = _load_detail_page(driver, url)
         detail = _parse_detail_page(page_source)
-        for field in ("tender_name", "contact_person", "phone", "budget", "org_name"):
+        for field in ("tender_name", "contact_person", "phone", "budget", "org_name", "bid_bond"):
             value = detail.get(field, "").strip()
             if not value:
                 continue
@@ -262,7 +262,7 @@ def _sync_appeal_tender(db, tender_data: dict, scraped_now) -> bool:
         return False
 
     existing.status = BIDDING_STATUS
-    for field in ("tender_name", "org_name", "contact_person", "phone", "budget", "tender_url"):
+    for field in ("tender_name", "org_name", "contact_person", "phone", "budget", "tender_url", "bid_bond"):
         new_val = tender_data.get(field, "").strip()
         if new_val:
             setattr(existing, field, new_val)
@@ -282,6 +282,7 @@ def _upsert_bidding_row(db, tender_data: dict, scraped_now) -> tuple[bool, bool]
         for field in (
             "tender_name", "org_name", "contact_person", "phone", "budget",
             "tender_url", "status", "proctrg_cate", "bid_deadline", "tender_way",
+            "bid_bond",
         ):
             new_val = tender_data.get(field, "").strip()
             if field == "phone" and new_val:
@@ -305,6 +306,7 @@ def _upsert_bidding_row(db, tender_data: dict, scraped_now) -> tuple[bool, bool]
         proctrg_cate=tender_data.get("proctrg_cate", "").strip(),
         bid_deadline=tender_data.get("bid_deadline", "").strip(),
         tender_way=tender_data.get("tender_way", "").strip(),
+        bid_bond=tender_data.get("bid_bond", "").strip(),
         scraped_at=scraped_now.replace(tzinfo=None),
         created_at=scraped_now.replace(tzinfo=None),
         updated_at=scraped_now.replace(tzinfo=None),
@@ -543,7 +545,7 @@ def enrich_bidding_contacts(limit: int = None) -> dict:
             try:
                 _enrich_bidding_from_detail(driver, data)
                 changed = False
-                for field in ["tender_name", "contact_person", "phone", "budget", "org_name"]:
+                for field in ["tender_name", "contact_person", "phone", "budget", "org_name", "bid_bond"]:
                     val = data.get(field, "").strip()
                     if field == "phone" and val:
                         val = _sanitize_phone_for_storage(val)

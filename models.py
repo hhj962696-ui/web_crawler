@@ -31,6 +31,7 @@ class Tender(Base):
     status = Column(String(50), default="公開徵求")  # 案件狀態
     is_tracked = Column(Boolean, default=False, index=True)  # 是否被追蹤
     track_note = Column(Text, default="")  # 追蹤備註
+    bid_bond = Column(String(100), default="")  # 押標金
     scraped_at = Column(DateTime, default=datetime.now)  # 爬取時間
     created_at = Column(DateTime, default=datetime.now)  # 建立時間
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)  # 更新時間
@@ -49,6 +50,7 @@ class Tender(Base):
             "status": self.status,
             "is_tracked": self.is_tracked,
             "track_note": self.track_note,
+            "bid_bond": self.bid_bond,
             "scraped_at": format_tw(self.scraped_at),
             "scraped_at_iso": discord_timestamp(self.scraped_at),
             "created_at": format_tw(self.created_at),
@@ -74,6 +76,7 @@ class BiddingTender(Base):
     tender_way = Column(String(50), default="")  # 招標方式
     is_tracked = Column(Boolean, default=False, index=True)
     track_note = Column(Text, default="")
+    bid_bond = Column(String(100), default="")
     scraped_at = Column(DateTime, default=datetime.now)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -94,6 +97,7 @@ class BiddingTender(Base):
             "tender_way": self.tender_way,
             "is_tracked": self.is_tracked,
             "track_note": self.track_note,
+            "bid_bond": self.bid_bond,
             "scraped_at": format_tw(self.scraped_at),
             "scraped_at_iso": discord_timestamp(self.scraped_at),
             "created_at": format_tw(self.created_at),

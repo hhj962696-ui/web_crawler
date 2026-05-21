@@ -23,7 +23,8 @@
         </div>
 
         <div class="keyword-input-group">
-            <input type="text" id="newKeyword" class="input" placeholder="輸入新關鍵字..." onkeypress="if(event.key==='Enter') addKeyword()">
+            <input type="text" id="newKeyword" class="input" placeholder="輸入新關鍵字..."
+                onkeypress="if(event.key==='Enter') addKeyword()">
             <button class="btn btn-primary" onclick="addKeyword()">新增</button>
         </div>
     </div>
@@ -35,33 +36,40 @@
             排程設定
         </h2>
         <p class="settings-desc">
-            公開徵求回溯 <strong>{{ scrape_lookback_days }}</strong> 天；公開招標回溯 <strong>{{ bidding_lookback_days }}</strong> 天（含今天）。
+            公開徵求回溯 <strong>{{ scrape_lookback_days }}</strong> 天；公開招標回溯 <strong>{{ bidding_lookback_days }}</strong>
+            天（含今天）。
         </p>
 
         <div class="form-group">
             <label class="form-label">公開徵求爬蟲時間</label>
             <div class="time-input-group">
-                <input type="number" id="scrapeHour" class="input time-input" min="0" max="23" value="{{ schedule.scrape_hour }}">
+                <input type="number" id="scrapeHour" class="input time-input" min="0" max="23"
+                    value="{{ schedule.scrape_hour }}">
                 <span class="time-separator">:</span>
-                <input type="number" id="scrapeMinute" class="input time-input" min="0" max="59" value="{{ schedule.scrape_minute }}">
+                <input type="number" id="scrapeMinute" class="input time-input" min="0" max="59"
+                    value="{{ schedule.scrape_minute }}">
             </div>
         </div>
 
         <div class="form-group">
             <label class="form-label">公開招標爬蟲時間</label>
             <div class="time-input-group">
-                <input type="number" id="biddingHour" class="input time-input" min="0" max="23" value="{{ schedule.bidding_hour }}">
+                <input type="number" id="biddingHour" class="input time-input" min="0" max="23"
+                    value="{{ schedule.bidding_hour }}">
                 <span class="time-separator">:</span>
-                <input type="number" id="biddingMinute" class="input time-input" min="0" max="59" value="{{ schedule.bidding_minute }}">
+                <input type="number" id="biddingMinute" class="input time-input" min="0" max="59"
+                    value="{{ schedule.bidding_minute }}">
             </div>
         </div>
 
         <div class="form-group">
             <label class="form-label">追蹤檢查時間</label>
             <div class="time-input-group">
-                <input type="number" id="trackHour" class="input time-input" min="0" max="23" value="{{ schedule.track_hour }}">
+                <input type="number" id="trackHour" class="input time-input" min="0" max="23"
+                    value="{{ schedule.track_hour }}">
                 <span class="time-separator">:</span>
-                <input type="number" id="trackMinute" class="input time-input" min="0" max="59" value="{{ schedule.track_minute }}">
+                <input type="number" id="trackMinute" class="input time-input" min="0" max="59"
+                    value="{{ schedule.track_minute }}">
             </div>
         </div>
 
@@ -88,8 +96,8 @@
         <div class="proc-category-group" id="procCategoryGroup">
             {% for opt in proc_options %}
             <label class="proc-checkbox">
-                <input type="checkbox" name="proc_cate" value="{{ opt }}"
-                    {% if opt in bidding_proc_categories %}checked{% endif %}>
+                <input type="checkbox" name="proc_cate" value="{{ opt }}" {% if opt in bidding_proc_categories
+                    %}checked{% endif %}>
                 {{ opt }}類
             </label>
             {% endfor %}
@@ -103,35 +111,44 @@
             <span class="settings-icon">💬</span>
             Discord 通知
         </h2>
-        <p class="settings-desc">公開徵求與公開招標使用不同 Webhook。請勿將 URL 提交至 Git。</p>
+        <p class="settings-desc">公開徵求與公開招標使用不同 Webhook。<br>請勿將 URL 提交至 Git。</p>
 
         <div class="form-group">
             <label class="form-label">公開徵求 Webhook</label>
-            <input type="password" id="webhookUrl" class="input" value="" placeholder="https://discord.com/api/webhooks/...">
+            <input type="password" id="webhookUrl" class="input" value=""
+                placeholder="https://discord.com/api/webhooks/..."
+                style="box-sizing: border-box; padding-right: 12px; width: 100%;">
             {% if webhook_configured %}
-            <p class="settings-hint">目前已設定：{{ webhook_masked }}</p>
+            <p class="settings-hint" style="word-break: break-all;">目前已設定：{{ webhook_masked }}</p>
             {% endif %}
             <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-                <button class="btn btn-ghost btn-small" onclick="toggleWebhookVisibility()">顯示/隱藏</button>
-                <button class="btn btn-primary btn-small" onclick="saveWebhook()">儲存 Webhook</button>
+                <button type="button" class="btn btn-ghost btn-small"
+                    onclick="toggleWebhookVisibility('webhookUrl')">顯示/隱藏</button>
+                <button type="button" class="btn btn-primary btn-small" onclick="saveWebhook()">儲存徵求 Webhook</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="testWebhook()">
+                    <span class="btn-icon">🧪</span> 發送測試通知
+                </button>
             </div>
         </div>
 
         <div class="form-group" style="margin-top:20px">
             <label class="form-label">公開招標 Webhook</label>
-            <input type="password" id="biddingWebhookUrl" class="input" value="" placeholder="https://discord.com/api/webhooks/...">
+            <input type="password" id="biddingWebhookUrl" class="input" value=""
+                placeholder="https://discord.com/api/webhooks/..."
+                style="box-sizing: border-box; padding-right: 12px; width: 100%;">
             {% if bidding_webhook_configured %}
-            <p class="settings-hint">目前已設定：{{ bidding_webhook_masked }}</p>
+            <p class="settings-hint" style="word-break: break-all;">目前已設定：{{ bidding_webhook_masked }}</p>
             {% endif %}
-            <div style="margin-top:8px">
-                <button class="btn btn-primary btn-small" onclick="saveBiddingWebhook()">儲存招標 Webhook</button>
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+                <button type="button" class="btn btn-ghost btn-small"
+                    onclick="toggleWebhookVisibility('biddingWebhookUrl')">顯示/隱藏</button>
+                <button type="button" class="btn btn-primary btn-small" onclick="saveBiddingWebhook()">儲存招標
+                    Webhook</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="testBiddingWebhook()">
+                    <span class="btn-icon">🧪</span> 發送測試通知
+                </button>
             </div>
         </div>
-
-        <button class="btn btn-secondary" onclick="testWebhook()">
-            <span class="btn-icon">🧪</span>
-            發送測試通知（公開徵求）
-        </button>
     </div>
 
     <!-- 爬蟲執行紀錄 -->
@@ -186,147 +203,160 @@
 
 {% block scripts %}
 <script>
-async function addKeyword() {
-    const input = document.getElementById('newKeyword');
-    const keyword = input.value.trim();
-    if (!keyword) return;
+    async function addKeyword() {
+        const input = document.getElementById('newKeyword');
+        const keyword = input.value.trim();
+        if (!keyword) return;
 
-    try {
-        const resp = await fetch('/api/settings/keywords', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({keyword: keyword}),
-        });
-        const data = await resp.json();
-        if (data.success) {
-            input.value = '';
-            location.reload();
-        } else {
-            showToast(data.message || '新增失敗', 'error');
+        try {
+            const resp = await fetch('/api/settings/keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword: keyword }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                input.value = '';
+                location.reload();
+            } else {
+                showToast(data.message || '新增失敗', 'error');
+            }
+        } catch (e) {
+            showToast('網路錯誤', 'error');
         }
-    } catch (e) {
-        showToast('網路錯誤', 'error');
     }
-}
 
-async function removeKeyword(keyword) {
-    try {
-        const resp = await fetch('/api/settings/keywords', {
-            method: 'DELETE',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({keyword: keyword}),
-        });
-        const data = await resp.json();
-        if (data.success) {
-            location.reload();
-        } else {
-            showToast(data.message || '移除失敗', 'error');
+    async function removeKeyword(keyword) {
+        try {
+            const resp = await fetch('/api/settings/keywords', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyword: keyword }),
+            });
+            const data = await resp.json();
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast(data.message || '移除失敗', 'error');
+            }
+        } catch (e) {
+            showToast('網路錯誤', 'error');
         }
-    } catch (e) {
-        showToast('網路錯誤', 'error');
     }
-}
 
-async function saveBiddingProc() {
-    const boxes = document.querySelectorAll('#procCategoryGroup input[name="proc_cate"]:checked');
-    const categories = Array.from(boxes).map(b => b.value);
-    try {
-        const resp = await fetch('/api/settings/bidding-proc', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({categories}),
-        });
-        const result = await resp.json();
-        showToast(result.success ? '採購性質已儲存' : (result.message || '儲存失敗'), result.success ? 'success' : 'error');
-    } catch (e) {
-        showToast('網路錯誤', 'error');
+    async function saveBiddingProc() {
+        const boxes = document.querySelectorAll('#procCategoryGroup input[name="proc_cate"]:checked');
+        const categories = Array.from(boxes).map(b => b.value);
+        try {
+            const resp = await fetch('/api/settings/bidding-proc', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categories }),
+            });
+            const result = await resp.json();
+            showToast(result.success ? '採購性質已儲存' : (result.message || '儲存失敗'), result.success ? 'success' : 'error');
+        } catch (e) {
+            showToast('網路錯誤', 'error');
+        }
     }
-}
 
-async function saveBiddingWebhook() {
-    const url = document.getElementById('biddingWebhookUrl').value.trim();
-    if (!url) {
-        showToast('請輸入 Webhook URL', 'error');
-        return;
-    }
-    try {
-        const resp = await fetch('/api/settings/bidding-webhook', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({webhook_url: url}),
-        });
-        const data = await resp.json();
-        showToast(data.message, data.success ? 'success' : 'error');
-        if (data.success) setTimeout(() => location.reload(), 800);
-    } catch (e) {
-        showToast('儲存失敗', 'error');
-    }
-}
-
-async function saveSchedule() {
-    const data = {
-        scrape_hour: parseInt(document.getElementById('scrapeHour').value),
-        scrape_minute: parseInt(document.getElementById('scrapeMinute').value),
-        bidding_hour: parseInt(document.getElementById('biddingHour').value),
-        bidding_minute: parseInt(document.getElementById('biddingMinute').value),
-        track_hour: parseInt(document.getElementById('trackHour').value),
-        track_minute: parseInt(document.getElementById('trackMinute').value),
-    };
-
-    try {
-        const resp = await fetch('/api/settings/schedule', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data),
-        });
-        const result = await resp.json();
-        if (result.success) {
-            showToast('排程設定已儲存並已套用', 'success');
-        } else {
+    async function saveBiddingWebhook() {
+        const url = document.getElementById('biddingWebhookUrl').value.trim();
+        if (!url) {
+            showToast('請輸入 Webhook URL', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/settings/bidding-webhook', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhook_url: url }),
+            });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+            if (data.success) setTimeout(() => location.reload(), 800);
+        } catch (e) {
             showToast('儲存失敗', 'error');
         }
-    } catch (e) {
-        showToast('網路錯誤', 'error');
     }
-}
 
-async function testWebhook() {
-    try {
-        showToast('正在發送測試通知...', 'info');
-        const resp = await fetch('/api/settings/test-webhook', {method: 'POST'});
-        const data = await resp.json();
-        showToast(data.message, data.success ? 'success' : 'error');
-    } catch (e) {
-        showToast('發送失敗', 'error');
-    }
-}
+    async function saveSchedule() {
+        const data = {
+            scrape_hour: parseInt(document.getElementById('scrapeHour').value),
+            scrape_minute: parseInt(document.getElementById('scrapeMinute').value),
+            bidding_hour: parseInt(document.getElementById('biddingHour').value),
+            bidding_minute: parseInt(document.getElementById('biddingMinute').value),
+            track_hour: parseInt(document.getElementById('trackHour').value),
+            track_minute: parseInt(document.getElementById('trackMinute').value),
+        };
 
-function toggleWebhookVisibility() {
-    const input = document.getElementById('webhookUrl');
-    input.type = input.type === 'password' ? 'text' : 'password';
-}
-
-async function saveWebhook() {
-    const url = document.getElementById('webhookUrl').value.trim();
-    if (!url) {
-        showToast('請輸入 Webhook URL', 'error');
-        return;
-    }
-    try {
-        const resp = await fetch('/api/settings/webhook', {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({webhook_url: url}),
-        });
-        const data = await resp.json();
-        showToast(data.message, data.success ? 'success' : 'error');
-        if (data.success) {
-            document.getElementById('webhookUrl').value = '';
-            setTimeout(() => location.reload(), 800);
+        try {
+            const resp = await fetch('/api/settings/schedule', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+            const result = await resp.json();
+            if (result.success) {
+                showToast('排程設定已儲存並已套用', 'success');
+            } else {
+                showToast('儲存失敗', 'error');
+            }
+        } catch (e) {
+            showToast('網路錯誤', 'error');
         }
-    } catch (e) {
-        showToast('儲存失敗', 'error');
     }
-}
+
+    async function testWebhook() {
+        try {
+            showToast('正在發送測試通知...', 'info');
+            const resp = await fetch('/api/settings/test-webhook', { method: 'POST' });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+        } catch (e) {
+            showToast('發送失敗', 'error');
+        }
+    }
+
+    async function testBiddingWebhook() {
+        try {
+            showToast('正在發送招標測試通知...', 'info');
+            const resp = await fetch('/api/settings/test-bidding-webhook', { method: 'POST' });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+        } catch (e) {
+            showToast('發送失敗', 'error');
+        }
+    }
+
+    function toggleWebhookVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+    }
+
+    async function saveWebhook() {
+        const url = document.getElementById('webhookUrl').value.trim();
+        if (!url) {
+            showToast('請輸入 Webhook URL', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/settings/webhook', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhook_url: url }),
+            });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+            if (data.success) {
+                document.getElementById('webhookUrl').value = '';
+                setTimeout(() => location.reload(), 800);
+            }
+        } catch (e) {
+            showToast('儲存失敗', 'error');
+        }
+    }
 </script>
 {% endblock %}

@@ -58,6 +58,7 @@ def _build_tender_description(tender: dict) -> str:
     contact = _display(tender.get("contact_person"))
     phone = _display(tender.get("phone"))
     budget = _display(tender.get("budget"), "未公告")
+    bid_bond = _display(tender.get("bid_bond"))
     default_status = "公開招標" if tender.get("proctrg_cate") or tender.get("bid_deadline") else "公開徵求"
     status = _display(tender.get("status"), default_status)
     org = _display(tender.get("org_name"))
@@ -72,6 +73,8 @@ def _build_tender_description(tender: dict) -> str:
         f"👤 **承辦**　{contact}　　📞 **電話**　{phone}",
         f"💰 **預算**　{budget}　　📊 **狀態**　{status}",
     ]
+    if bid_bond != "—":
+        lines.append(f"💵 **押標金**　{bid_bond}")
     if tender.get("proctrg_cate"):
         lines.append(f"📂 **採購性質**　{tender['proctrg_cate']}")
     if tender.get("bid_deadline"):
@@ -408,4 +411,68 @@ def send_test_notification() -> bool:
         return resp.status_code == 204
     except requests.RequestException as e:
         logger.error(f"測試通知發送失敗: {e}")
+        return False
+
+
+def send_bidding_test_notification() -> bool:
+    """發送公開招標測試通知"""
+    webhook_url = config.BIDDING_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        return False
+
+    info_embed = {
+        "title": "✅ 招標 Webhook 連線測試成功",
+        "color": COLOR_INFO,
+        "description": (
+            f"⏰ **測試時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}（本機時區）\n"
+            f"此通知用於確認**公開招標**的 Discord 推播正常運作。"
+        ),
+    }
+
+    payload = {
+        "content": "🧪 **招標系統測試通知**",
+        "embeds": [info_embed],
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        return resp.status_code == 204
+    except requests.RequestException as e:
+        logger.error(f"招標測試通知發送失敗: {e}")
+        return False
+
+
+def send_daily_health_check_notification() -> bool:
+    """發送每日系統運作檢測通知"""
+    webhook_url = config.DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        return False
+
+    info_embed = {
+        "title": "✅ 系統運作正常 - 每日檢測",
+        "color": COLOR_INFO,
+        "description": (
+            f"系統目前正常運行中。\n\n"
+            f"⏰ **檢測時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}（本機時區）\n"
+            f"🔑 **篩選關鍵字**　{', '.join(config.FILTER_KEYWORDS) or '未設定'}"
+        ),
+    }
+
+    payload = {
+        "content": "🤖 **每日運作檢測通知**",
+        "embeds": [info_embed],
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 204:
+            return True
+        elif resp.status_code == 429:
+            retry_after = resp.json().get("retry_after", 5)
+            time.sleep(retry_after)
+            resp = requests.post(webhook_url, json=payload, timeout=10)
+            return resp.status_code == 204
+        return False
+    except requests.RequestException as e:
+        logger.error(f"每日檢測通知發送失敗: {e}")
         return False

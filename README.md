@@ -45,6 +45,9 @@
 | **電話欄位** | 詳情頁誤抓長文修正；`repair-phones` / `enrich-bidding` |
 | **設定頁擴充** | 招標排程、採購性質（工程/財物/勞務）、招標 Webhook |
 | **Bug 修復** | `config.BASE_DIR` 缺失導致儲存 Webhook 500 |
+| **運作檢測** | 新增每日 08:00 自動推播 Discord 系統健康狀態檢查 (`discord_notifier.py` / `HEALTH_CHECK_HOUR`) |
+| **押標金抓取** | 爬蟲新增擷取「押標金」（`bid_bond`）並自動格式化金額，同步顯示於 Web UI 與 Discord 推播中 |
+| **UI 優化** | 設定頁 Discord Webhook 輸入框版面微調、顯示/隱藏密碼功能修復、並為兩個頻道獨立加上測試通知按鈕 |
 
 ---
 
@@ -401,4 +404,4 @@ CHROME_HEADLESS=true
 
 ---
 
-*最後更新：2026-05-20 — 公開招標模組上線（排程、Web、CLI、雙 Webhook）；電話欄位清洗與 repair-phones；本機 run.py 已驗證。*
+*最後更新：2026-05-21 — 新增押標金欄位擷取與金額自動格式化、每日 08:00 自動健康檢測通知、Web UI 設定頁面優化。*

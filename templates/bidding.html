@@ -90,6 +90,10 @@
                 <span class="detail-value budget">{{ tender.budget or '未公告' }}</span>
             </div>
             <div class="detail-item">
+                <span class="detail-label">💵 押標金</span>
+                <span class="detail-value">{{ tender.bid_bond or '無' }}</span>
+            </div>
+            <div class="detail-item">
                 <span class="detail-label">🕐 爬取時間</span>
                 <span class="detail-value">{{ tender.scraped_at }}</span>
             </div>

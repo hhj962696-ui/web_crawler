@@ -36,6 +36,8 @@ class Config:
     BIDDING_SCHEDULE_MINUTE = int(os.getenv("BIDDING_SCHEDULE_MINUTE", "0"))
     TRACK_CHECK_HOUR = int(os.getenv("TRACK_CHECK_HOUR", "12"))
     TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
+    HEALTH_CHECK_HOUR = int(os.getenv("HEALTH_CHECK_HOUR", "8"))
+    HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
 
     # 每日爬蟲回溯天數（含今天，例如 3 = 今天 + 前 2 天）
     SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
@@ -101,6 +103,8 @@ class Config:
         cls.BIDDING_SCHEDULE_MINUTE = int(os.getenv("BIDDING_SCHEDULE_MINUTE", "0"))
         cls.TRACK_CHECK_HOUR = int(os.getenv("TRACK_CHECK_HOUR", "12"))
         cls.TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
+        cls.HEALTH_CHECK_HOUR = int(os.getenv("HEALTH_CHECK_HOUR", "8"))
+        cls.HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
         cls.SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
         cls.BIDDING_LOOKBACK_DAYS = max(1, int(os.getenv("BIDDING_LOOKBACK_DAYS", "3")))
         cls.BIDDING_PROC_CATEGORIES = [

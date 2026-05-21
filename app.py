@@ -25,6 +25,7 @@ from scheduler import (
 )
 from discord_notifier import (
     send_test_notification,
+    send_bidding_test_notification,
     send_manual_push_notification,
     send_manual_push_bidding_notification,
 )
@@ -613,6 +614,16 @@ async def api_test_webhook():
     return {
         "success": success,
         "message": "測試通知已發送！" if success else "發送失敗，請檢查 Webhook URL",
+    }
+
+
+@app.post("/api/settings/test-bidding-webhook")
+async def api_test_bidding_webhook():
+    """測試公開招標 Discord Webhook"""
+    success = send_bidding_test_notification()
+    return {
+        "success": success,
+        "message": "公開招標測試通知已發送！" if success else "發送失敗，請檢查公開招標 Webhook URL",
     }
 
 

@@ -13,6 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from config import config
 from scraper import run_scraper, check_tracked_tenders
 from bidding_scraper import run_bidding_scraper
+from discord_notifier import send_daily_health_check_notification
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,15 @@ def _safe_check_tracked():
             logger.error(f"[排程] 追蹤檢查異常: {e}", exc_info=True)
         finally:
             _running_mode = None
+
+
+def _safe_health_check():
+    logger.info("[排程] 開始發送每日運作檢測通知...")
+    success = send_daily_health_check_notification()
+    if success:
+        logger.info("[排程] 每日運作檢測通知發送成功")
+    else:
+        logger.error("[排程] 每日運作檢測通知發送失敗")
 
 
 def is_scraper_running() -> bool:
@@ -158,6 +168,17 @@ def _register_jobs():
         replace_existing=True,
     )
 
+    scheduler.add_job(
+        _safe_health_check,
+        CronTrigger(
+            hour=config.HEALTH_CHECK_HOUR,
+            minute=config.HEALTH_CHECK_MINUTE,
+        ),
+        id="health_checker",
+        name="每日運作檢測",
+        replace_existing=True,
+    )
+
 
 def init_scheduler():
     _register_jobs()
@@ -169,7 +190,8 @@ def init_scheduler():
         f"(回溯 {config.SCRAPE_LOOKBACK_DAYS} 天), "
         f"公開招標: {config.BIDDING_SCHEDULE_HOUR:02d}:{config.BIDDING_SCHEDULE_MINUTE:02d} "
         f"(回溯 {config.BIDDING_LOOKBACK_DAYS} 天), "
-        f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}"
+        f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}, "
+        f"運作檢測: {config.HEALTH_CHECK_HOUR:02d}:{config.HEALTH_CHECK_MINUTE:02d}"
     )
 
 
