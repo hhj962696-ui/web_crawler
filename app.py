@@ -22,13 +22,17 @@ from models import init_db, get_db, Tender, BiddingTender, ScrapeLog, SessionLoc
 from scheduler import (
     manual_run_scraper, manual_run_bidding_scraper, manual_check_tracked,
     is_scraper_running, get_running_mode, get_next_run_times, reschedule_jobs,
+    manual_run_job_analyzer,
 )
 from discord_notifier import (
     send_test_notification,
     send_bidding_test_notification,
+    send_sales_test_notification,
     send_manual_push_notification,
     send_manual_push_bidding_notification,
 )
+
+from routers import devices, contacts
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +42,9 @@ app = FastAPI(
     description="政府電子採購網公開徵求／公開招標案件自動擷取系統",
     version="1.0.0",
 )
+
+app.include_router(devices.router)
+app.include_router(contacts.router)
 
 # 靜態檔案與模板
 BASE_DIR = Path(__file__).resolve().parent
@@ -200,6 +207,8 @@ async def settings_page(request: Request):
                 "bidding_minute": config.BIDDING_SCHEDULE_MINUTE,
                 "track_hour": config.TRACK_CHECK_HOUR,
                 "track_minute": config.TRACK_CHECK_MINUTE,
+                "job104_hour": config.JOB104_SCHEDULE_HOUR,
+                "job104_minute": config.JOB104_SCHEDULE_MINUTE,
             },
             "scrape_lookback_days": config.SCRAPE_LOOKBACK_DAYS,
             "bidding_lookback_days": config.BIDDING_LOOKBACK_DAYS,
@@ -211,6 +220,12 @@ async def settings_page(request: Request):
                 config.BIDDING_DISCORD_WEBHOOK_URL[:40] + "..."
                 if len(config.BIDDING_DISCORD_WEBHOOK_URL) > 40
                 else config.BIDDING_DISCORD_WEBHOOK_URL
+            ),
+            "sales_webhook_configured": bool(config.SALES_DISCORD_WEBHOOK_URL),
+            "sales_webhook_masked": (
+                config.SALES_DISCORD_WEBHOOK_URL[:40] + "..."
+                if len(config.SALES_DISCORD_WEBHOOK_URL) > 40
+                else config.SALES_DISCORD_WEBHOOK_URL
             ),
             "next_runs": next_runs,
             "webhook_masked": webhook_masked,
@@ -418,6 +433,12 @@ async def api_scrape_run_bidding():
     return manual_run_bidding_scraper()
 
 
+@app.post("/api/job104/manual")
+async def api_job104_manual():
+    """手動觸發 104 分析工作"""
+    return manual_run_job_analyzer()
+
+
 @app.post("/api/scrape/check-tracked")
 async def api_check_tracked():
     """手動觸發追蹤檢查"""
@@ -504,6 +525,8 @@ async def api_update_schedule(request: Request):
         config.BIDDING_SCHEDULE_MINUTE = int(body.get("bidding_minute", config.BIDDING_SCHEDULE_MINUTE))
         config.TRACK_CHECK_HOUR = int(body.get("track_hour", config.TRACK_CHECK_HOUR))
         config.TRACK_CHECK_MINUTE = int(body.get("track_minute", config.TRACK_CHECK_MINUTE))
+        config.JOB104_SCHEDULE_HOUR = int(body.get("job104_hour", config.JOB104_SCHEDULE_HOUR))
+        config.JOB104_SCHEDULE_MINUTE = int(body.get("job104_minute", config.JOB104_SCHEDULE_MINUTE))
         _save_schedule_to_env()
         reschedule_jobs()
         return {"success": True, "message": "排程設定已儲存並已套用"}
@@ -525,6 +548,22 @@ async def api_update_bidding_webhook(request: Request):
     _ensure_env_file()
     _update_env_value("BIDDING_DISCORD_WEBHOOK_URL", url)
     return {"success": True, "message": "公開招標 Webhook 已儲存"}
+
+
+@app.put("/api/settings/sales-webhook")
+async def api_update_sales_webhook(request: Request):
+    """更新業務通知 Discord Webhook"""
+    body = await request.json()
+    url = body.get("webhook_url", "").strip()
+    if not url:
+        return {"success": False, "message": "Webhook URL 不能為空"}
+    if "discord.com/api/webhooks" not in url and "discordapp.com/api/webhooks" not in url:
+        return {"success": False, "message": "請輸入有效的 Discord Webhook URL"}
+
+    config.SALES_DISCORD_WEBHOOK_URL = url
+    _ensure_env_file()
+    _update_env_value("SALES_DISCORD_WEBHOOK_URL", url)
+    return {"success": True, "message": "業務通知 Webhook 已儲存"}
 
 
 @app.put("/api/settings/bidding-proc")
@@ -627,6 +666,16 @@ async def api_test_bidding_webhook():
     }
 
 
+@app.post("/api/settings/test-sales-webhook")
+async def api_test_sales_webhook():
+    """測試業務通知 Discord Webhook"""
+    success = send_sales_test_notification()
+    return {
+        "success": success,
+        "message": "業務通知測試已發送！" if success else "發送失敗，請檢查業務 Webhook URL",
+    }
+
+
 # === 工具函式 ===
 def _read_env_lines(env_path: Path) -> list[str]:
     """以 UTF-8 讀取 .env（相容含 BOM 的檔案）"""
@@ -657,6 +706,8 @@ def _save_schedule_to_env():
     _update_env_value("BIDDING_SCHEDULE_MINUTE", str(config.BIDDING_SCHEDULE_MINUTE))
     _update_env_value("TRACK_CHECK_HOUR", str(config.TRACK_CHECK_HOUR))
     _update_env_value("TRACK_CHECK_MINUTE", str(config.TRACK_CHECK_MINUTE))
+    _update_env_value("JOB104_SCHEDULE_HOUR", str(config.JOB104_SCHEDULE_HOUR))
+    _update_env_value("JOB104_SCHEDULE_MINUTE", str(config.JOB104_SCHEDULE_MINUTE))
 
 
 def _update_env_value(key: str, value: str):

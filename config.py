@@ -28,6 +28,7 @@ class Config:
     # Discord
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
     BIDDING_DISCORD_WEBHOOK_URL = os.getenv("BIDDING_DISCORD_WEBHOOK_URL", "")
+    SALES_DISCORD_WEBHOOK_URL = os.getenv("SALES_DISCORD_WEBHOOK_URL", "")
 
     # 排程設定
     SCRAPE_SCHEDULE_HOUR = int(os.getenv("SCRAPE_SCHEDULE_HOUR", "8"))
@@ -38,6 +39,18 @@ class Config:
     TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
     HEALTH_CHECK_HOUR = int(os.getenv("HEALTH_CHECK_HOUR", "8"))
     HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
+    JOB104_SCHEDULE_HOUR = int(os.getenv("JOB104_SCHEDULE_HOUR", "10"))
+    JOB104_SCHEDULE_MINUTE = int(os.getenv("JOB104_SCHEDULE_MINUTE", "0"))
+
+    # 104 探測器 — 略過的機關名稱關鍵字
+    JOB104_SKIP_KEYWORDS = [
+        kw.strip()
+        for kw in os.getenv(
+            "JOB104_SKIP_KEYWORDS",
+            "大學,學院,學校,中央研究院,國小,國中,高中,高職,專科"
+        ).split(",")
+        if kw.strip()
+    ]
 
     # 每日爬蟲回溯天數（含今天，例如 3 = 今天 + 前 2 天）
     SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
@@ -97,6 +110,7 @@ class Config:
         load_dotenv(cls.BASE_DIR / ".env", override=True, encoding="utf-8")
         cls.DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
         cls.BIDDING_DISCORD_WEBHOOK_URL = os.getenv("BIDDING_DISCORD_WEBHOOK_URL", "")
+        cls.SALES_DISCORD_WEBHOOK_URL = os.getenv("SALES_DISCORD_WEBHOOK_URL", "")
         cls.SCRAPE_SCHEDULE_HOUR = int(os.getenv("SCRAPE_SCHEDULE_HOUR", "8"))
         cls.SCRAPE_SCHEDULE_MINUTE = int(os.getenv("SCRAPE_SCHEDULE_MINUTE", "10"))
         cls.BIDDING_SCHEDULE_HOUR = int(os.getenv("BIDDING_SCHEDULE_HOUR", "9"))
@@ -105,6 +119,16 @@ class Config:
         cls.TRACK_CHECK_MINUTE = int(os.getenv("TRACK_CHECK_MINUTE", "0"))
         cls.HEALTH_CHECK_HOUR = int(os.getenv("HEALTH_CHECK_HOUR", "8"))
         cls.HEALTH_CHECK_MINUTE = int(os.getenv("HEALTH_CHECK_MINUTE", "0"))
+        cls.JOB104_SCHEDULE_HOUR = int(os.getenv("JOB104_SCHEDULE_HOUR", "10"))
+        cls.JOB104_SCHEDULE_MINUTE = int(os.getenv("JOB104_SCHEDULE_MINUTE", "0"))
+        cls.JOB104_SKIP_KEYWORDS = [
+            kw.strip()
+            for kw in os.getenv(
+                "JOB104_SKIP_KEYWORDS",
+                "大學,學院,學校,中央研究院,國小,國中,高中,高職,專科"
+            ).split(",")
+            if kw.strip()
+        ]
         cls.SCRAPE_LOOKBACK_DAYS = max(1, int(os.getenv("SCRAPE_LOOKBACK_DAYS", "3")))
         cls.BIDDING_LOOKBACK_DAYS = max(1, int(os.getenv("BIDDING_LOOKBACK_DAYS", "3")))
         cls.BIDDING_PROC_CATEGORIES = [

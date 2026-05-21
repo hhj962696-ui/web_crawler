@@ -73,6 +73,17 @@
             </div>
         </div>
 
+        <div class="form-group">
+            <label class="form-label">104 探測器分析時間</label>
+            <div class="time-input-group">
+                <input type="number" id="job104Hour" class="input time-input" min="0" max="23"
+                    value="{{ schedule.job104_hour }}">
+                <span class="time-separator">:</span>
+                <input type="number" id="job104Minute" class="input time-input" min="0" max="59"
+                    value="{{ schedule.job104_minute }}">
+            </div>
+        </div>
+
         <button class="btn btn-primary" onclick="saveSchedule()">儲存排程設定</button>
 
         <div class="next-runs" id="nextRuns">
@@ -145,6 +156,25 @@
                 <button type="button" class="btn btn-primary btn-small" onclick="saveBiddingWebhook()">儲存招標
                     Webhook</button>
                 <button type="button" class="btn btn-secondary btn-small" onclick="testBiddingWebhook()">
+                    <span class="btn-icon">🧪</span> 發送測試通知
+                </button>
+            </div>
+        </div>
+
+        <div class="form-group" style="margin-top:20px">
+            <label class="form-label">業務通知 Webhook（銷售中台）</label>
+            <input type="password" id="salesWebhookUrl" class="input" value=""
+                placeholder="https://discord.com/api/webhooks/..."
+                style="box-sizing: border-box; padding-right: 12px; width: 100%;">
+            {% if sales_webhook_configured %}
+            <p class="settings-hint" style="word-break: break-all;">目前已設定：{{ sales_webhook_masked }}</p>
+            {% endif %}
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
+                <button type="button" class="btn btn-ghost btn-small"
+                    onclick="toggleWebhookVisibility('salesWebhookUrl')">顯示/隱藏</button>
+                <button type="button" class="btn btn-primary btn-small" onclick="saveSalesWebhook()">儲存業務
+                    Webhook</button>
+                <button type="button" class="btn btn-secondary btn-small" onclick="testSalesWebhook()">
                     <span class="btn-icon">🧪</span> 發送測試通知
                 </button>
             </div>
@@ -288,6 +318,8 @@
             bidding_minute: parseInt(document.getElementById('biddingMinute').value),
             track_hour: parseInt(document.getElementById('trackHour').value),
             track_minute: parseInt(document.getElementById('trackMinute').value),
+            job104_hour: parseInt(document.getElementById('job104Hour').value),
+            job104_minute: parseInt(document.getElementById('job104Minute').value),
         };
 
         try {
@@ -322,6 +354,37 @@
         try {
             showToast('正在發送招標測試通知...', 'info');
             const resp = await fetch('/api/settings/test-bidding-webhook', { method: 'POST' });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+        } catch (e) {
+            showToast('發送失敗', 'error');
+        }
+    }
+
+    async function saveSalesWebhook() {
+        const url = document.getElementById('salesWebhookUrl').value.trim();
+        if (!url) {
+            showToast('請輸入 Webhook URL', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('/api/settings/sales-webhook', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhook_url: url }),
+            });
+            const data = await resp.json();
+            showToast(data.message, data.success ? 'success' : 'error');
+            if (data.success) setTimeout(() => location.reload(), 800);
+        } catch (e) {
+            showToast('儲存失敗', 'error');
+        }
+    }
+
+    async function testSalesWebhook() {
+        try {
+            showToast('正在發送業務測試通知...', 'info');
+            const resp = await fetch('/api/settings/test-sales-webhook', { method: 'POST' });
             const data = await resp.json();
             showToast(data.message, data.success ? 'success' : 'error');
         } catch (e) {

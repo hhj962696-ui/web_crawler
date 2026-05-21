@@ -14,6 +14,7 @@ from config import config
 from scraper import run_scraper, check_tracked_tenders
 from bidding_scraper import run_bidding_scraper
 from discord_notifier import send_daily_health_check_notification
+from job_analyzer import run_batch_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,24 @@ def _safe_health_check():
         logger.error("[排程] 每日運作檢測通知發送失敗")
 
 
+def _safe_run_job_analyzer():
+    global _running_mode
+    if _running_mode:
+        logger.warning(f"爬蟲正在執行中（{_running_mode}），跳過 104 分析排程")
+        return
+
+    with _scraper_lock:
+        _running_mode = "job104"
+        try:
+            logger.info("[排程] 開始執行 104 探測器批次分析...")
+            result = run_batch_analysis()
+            logger.info(f"[排程] 104 探測器分析完成: {result}")
+        except Exception as e:
+            logger.error(f"[排程] 104 探測器異常: {e}", exc_info=True)
+        finally:
+            _running_mode = None
+
+
 def is_scraper_running() -> bool:
     return _running_mode is not None
 
@@ -130,6 +149,18 @@ def manual_check_tracked() -> dict:
     )
     thread.start()
     return {"started": True, "message": "追蹤檢查已開始執行"}
+
+
+def manual_run_job_analyzer() -> dict:
+    if _running_mode:
+        return {"started": False, "message": f"系統忙碌中（{_running_mode}），請稍後再試"}
+
+    thread = threading.Thread(
+        target=_safe_run_job_analyzer,
+        daemon=True,
+    )
+    thread.start()
+    return {"started": True, "message": "104 探測器已開始執行，請稍候查看分析紀錄"}
 
 
 def _register_jobs():
@@ -179,6 +210,17 @@ def _register_jobs():
         replace_existing=True,
     )
 
+    scheduler.add_job(
+        _safe_run_job_analyzer,
+        CronTrigger(
+            hour=config.JOB104_SCHEDULE_HOUR,
+            minute=config.JOB104_SCHEDULE_MINUTE,
+        ),
+        id="job104_analyzer",
+        name="104 人力銀行探測器",
+        replace_existing=True,
+    )
+
 
 def init_scheduler():
     _register_jobs()
@@ -191,7 +233,8 @@ def init_scheduler():
         f"公開招標: {config.BIDDING_SCHEDULE_HOUR:02d}:{config.BIDDING_SCHEDULE_MINUTE:02d} "
         f"(回溯 {config.BIDDING_LOOKBACK_DAYS} 天), "
         f"追蹤檢查: {config.TRACK_CHECK_HOUR:02d}:{config.TRACK_CHECK_MINUTE:02d}, "
-        f"運作檢測: {config.HEALTH_CHECK_HOUR:02d}:{config.HEALTH_CHECK_MINUTE:02d}"
+        f"運作檢測: {config.HEALTH_CHECK_HOUR:02d}:{config.HEALTH_CHECK_MINUTE:02d}, "
+        f"104 探測: {config.JOB104_SCHEDULE_HOUR:02d}:{config.JOB104_SCHEDULE_MINUTE:02d}"
     )
 
 

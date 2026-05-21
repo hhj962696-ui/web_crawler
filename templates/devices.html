@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="header-container">
+    <h2>🖥️ 設備資料庫管理</h2>
+    <div class="actions">
+        <button class="btn btn-primary" onclick="openDeviceModal()">➕ 新增設備</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table" id="devicesTable">
+            <thead>
+                <tr>
+                    <th>品牌</th>
+                    <th>型號</th>
+                    <th>類別</th>
+                    <th>最大 VPN / 並行</th>
+                    <th>參考價</th>
+                    <th>成本價</th>
+                    <th>狀態</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="devicesList">
+                <tr><td colspan="8" style="text-align:center;">載入中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 設備編輯 Modal -->
+<div id="deviceModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close-btn" onclick="closeDeviceModal()">&times;</span>
+        <h3 id="modalTitle">新增設備</h3>
+        
+        <form id="deviceForm" onsubmit="saveDevice(event)">
+            <input type="hidden" id="deviceId">
+            <div class="form-group">
+                <label class="form-label">品牌 (必填)</label>
+                <input type="text" id="devBrand" class="input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">型號 (必填)</label>
+                <input type="text" id="devModel" class="input" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">類別</label>
+                <input type="text" id="devCategory" class="input" placeholder="例如: 防火牆">
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">最大 VPN 通道數</label>
+                    <input type="number" id="devVpn" class="input" value="0">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">最大並行數</label>
+                    <input type="number" id="devConcurrent" class="input" value="0">
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">參考價</label>
+                    <input type="number" id="devRefPrice" class="input" value="0">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">成本價</label>
+                    <input type="number" id="devCostPrice" class="input" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">是否啟用</label>
+                <input type="checkbox" id="devActive" checked>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">儲存</button>
+        </form>
+    </div>
+</div>
+
+<script>
+let currentDevices = [];
+
+async function loadDevices() {
+    try {
+        const resp = await fetch('/api/devices');
+        const data = await resp.json();
+        currentDevices = data.devices || [];
+        renderDevices();
+    } catch (e) {
+        showToast('載入失敗', 'error');
+    }
+}
+
+function renderDevices() {
+    const tbody = document.getElementById('devicesList');
+    if (!currentDevices.length) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">目前無設備資料</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = currentDevices.map(d => `
+        <tr>
+            <td><strong>${d.brand}</strong></td>
+            <td>${d.model}</td>
+            <td><span class="badge" style="background:#34495e;">${d.category || '-'}</span></td>
+            <td>${d.max_vpn_tunnels} / ${d.max_concurrent}</td>
+            <td style="color:#27ae60;">$${Number(d.reference_price).toLocaleString()}</td>
+            <td style="color:#e74c3c;">$${Number(d.cost_price).toLocaleString()}</td>
+            <td>${d.is_active ? '<span class="badge" style="background:#2ecc71;">啟用</span>' : '<span class="badge" style="background:#e74c3c;">停用</span>'}</td>
+            <td>
+                <button class="btn btn-sm btn-secondary" onclick="editDevice(${d.id})">編輯</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteDevice(${d.id})" style="background:#e74c3c;color:#fff;">刪除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openDeviceModal() {
+    document.getElementById('deviceForm').reset();
+    document.getElementById('deviceId').value = '';
+    document.getElementById('modalTitle').textContent = '新增設備';
+    document.getElementById('deviceModal').style.display = 'flex';
+}
+
+function closeDeviceModal() {
+    document.getElementById('deviceModal').style.display = 'none';
+}
+
+function editDevice(id) {
+    const d = currentDevices.find(x => x.id === id);
+    if (!d) return;
+    
+    document.getElementById('deviceId').value = d.id;
+    document.getElementById('devBrand').value = d.brand;
+    document.getElementById('devModel').value = d.model;
+    document.getElementById('devCategory').value = d.category || '';
+    document.getElementById('devVpn').value = d.max_vpn_tunnels || 0;
+    document.getElementById('devConcurrent').value = d.max_concurrent || 0;
+    document.getElementById('devRefPrice').value = d.reference_price || 0;
+    document.getElementById('devCostPrice').value = d.cost_price || 0;
+    document.getElementById('devActive').checked = d.is_active;
+    
+    document.getElementById('modalTitle').textContent = '編輯設備';
+    document.getElementById('deviceModal').style.display = 'flex';
+}
+
+async function saveDevice(e) {
+    e.preventDefault();
+    const id = document.getElementById('deviceId').value;
+    const payload = {
+        brand: document.getElementById('devBrand').value,
+        model: document.getElementById('devModel').value,
+        category: document.getElementById('devCategory').value,
+        max_vpn_tunnels: parseInt(document.getElementById('devVpn').value),
+        max_concurrent: parseInt(document.getElementById('devConcurrent').value),
+        reference_price: parseFloat(document.getElementById('devRefPrice').value),
+        cost_price: parseFloat(document.getElementById('devCostPrice').value),
+        is_active: document.getElementById('devActive').checked
+    };
+    
+    const url = id ? `/api/devices/${id}` : '/api/devices';
+    const method = id ? 'PUT' : 'POST';
+    
+    try {
+        const resp = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeDeviceModal();
+            loadDevices();
+        } else {
+            showToast(result.message, 'error');
+        }
+    } catch (err) {
+        showToast('儲存失敗', 'error');
+    }
+}
+
+async function deleteDevice(id) {
+    if (!confirm('確定要刪除此設備嗎？')) return;
+    try {
+        const resp = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            loadDevices();
+        }
+    } catch (e) {
+        showToast('刪除失敗', 'error');
+    }
+}
+
+// 點擊 Modal 外圍關閉
+window.onclick = function(event) {
+    if (event.target == document.getElementById('deviceModal')) {
+        closeDeviceModal();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadDevices);
+</script>
+{% endblock %}

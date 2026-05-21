@@ -776,6 +776,18 @@ def run_scraper(
             f"更新 {result['updated_count']} 筆"
         )
 
+        # 觸發業務分析管線（僅新案，非同步不阻塞）
+        if new_tenders:
+            try:
+                from sales_pipeline import trigger_analysis
+                for td in new_tenders:
+                    tid = td.get("tender_id", "").strip()
+                    org = td.get("org_name", "").strip()
+                    if tid:
+                        trigger_analysis(tid, "tenders", org, modules=["A"])
+            except Exception as pipe_err:
+                logger.warning(f"[Pipeline] 觸發分析失敗（不影響爬蟲）: {pipe_err}")
+
         # Discord 通知（僅新案件）
         if new_tenders:
             send_new_tenders_notification(new_tenders)

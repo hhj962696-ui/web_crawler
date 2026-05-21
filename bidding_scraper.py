@@ -479,6 +479,18 @@ def run_bidding_scraper(
             f"同步徵求表 {result['appeal_synced']} 筆"
         )
 
+        # 觸發業務分析管線（僅新案，非同步不阻塞）
+        if new_for_discord:
+            try:
+                from sales_pipeline import trigger_analysis
+                for td in new_for_discord:
+                    tid = td.get("tender_id", "").strip()
+                    org = td.get("org_name", "").strip()
+                    if tid:
+                        trigger_analysis(tid, "bidding_tenders", org, modules=["A", "B", "C"])
+            except Exception as pipe_err:
+                logger.warning(f"[Pipeline] 觸發分析失敗（不影響爬蟲）: {pipe_err}")
+
         if new_for_discord:
             send_new_bidding_notification(new_for_discord)
 

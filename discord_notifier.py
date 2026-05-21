@@ -476,3 +476,86 @@ def send_daily_health_check_notification() -> bool:
     except requests.RequestException as e:
         logger.error(f"每日檢測通知發送失敗: {e}")
         return False
+
+
+def send_sales_test_notification() -> bool:
+    """發送業務通知測試（用於驗證第三個 Webhook 設定）"""
+    webhook_url = config.SALES_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        return False
+
+    info_embed = {
+        "title": "✅ 業務通知 Webhook 連線測試成功",
+        "color": COLOR_INFO,
+        "description": (
+            f"⏰ **測試時間**　{time.strftime('%Y-%m-%d %H:%M:%S')}（本機時區）\n"
+            f"此通知用於確認**業務中台**的 Discord 推播正常運作。\n"
+            f"後續將推送高潛力客戶提醒、設備匹配結果、報價建議等。"
+        ),
+    }
+
+    payload = {
+        "content": "🧪 **業務中台測試通知**",
+        "embeds": [info_embed],
+    }
+
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        return resp.status_code == 204
+    except requests.RequestException as e:
+        logger.error(f"業務通知測試發送失敗: {e}")
+        return False
+
+
+def send_high_potential_notification(tender: dict, insight: dict) -> bool:
+    """發送高潛力客戶推播（模組 A 評分高時）"""
+    webhook_url = config.SALES_DISCORD_WEBHOOK_URL
+    if not webhook_url:
+        return False
+        
+    score = insight.get("remote_score", 0)
+    org_name = insight.get("org_name", "未知機關")
+    
+    # 決定顏色 (高分紅色，中分橘色)
+    color = COLOR_HIGH if score >= 80 else COLOR_MEDIUM
+    
+    description = (
+        f"🎯 **高潛力客戶偵測 (104 探測器)**\n\n"
+        f"🏢 **機關**　{org_name}\n"
+        f"📌 **案號**　`{tender.get('tender_id', '')}`\n"
+        f"💡 **潛力分數**　**{score}** 分\n"
+        f"📊 **職缺分析**　遠端/WFH ({insight.get('remote_job_count', 0)}) / "
+        f"網管 ({insight.get('netadmin_job_count', 0)}) / "
+        f"總職缺 ({insight.get('total_job_count', 0)})\n"
+    )
+    
+    budget = _display(tender.get("budget"))
+    if budget != "—":
+        description += f"💰 **預算**　{budget}\n"
+        
+    embed = {
+        "title": f"🔥 發現潛在商機 — {org_name}",
+        "color": color,
+        "description": description,
+    }
+    
+    url = (tender.get("tender_url") or "").strip()
+    if url:
+        embed["url"] = url
+        
+    payload = {
+        "content": "🚀 **[業務通知] 系統偵測到高潛力客戶！**",
+        "embeds": [embed],
+    }
+    
+    try:
+        resp = requests.post(webhook_url, json=payload, timeout=10)
+        if resp.status_code == 204:
+            logger.info(f"高潛力通知已發送: {tender.get('tender_id')}")
+            return True
+        else:
+            logger.error(f"高潛力通知失敗: {resp.status_code}")
+            return False
+    except requests.RequestException as e:
+        logger.error(f"高潛力通知異常: {e}")
+        return False

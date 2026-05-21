@@ -134,6 +134,201 @@ class ScrapeLog(Base):
         }
 
 
+class SalesInsight(Base):
+    """業務洞察主表 — 整合模組 A/B/C 的分析結果"""
+    __tablename__ = "sales_insights"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tender_id = Column(String(100), unique=True, nullable=False, index=True)
+    source_table = Column(String(20), default="tenders")  # 'tenders' | 'bidding_tenders'
+    org_name = Column(String(200), default="")
+    org_tax_id = Column(String(20), default="")
+
+    # 模組 A：104 探測結果
+    remote_score = Column(Integer, default=0)          # 遠端工作潛力分數 0~100
+    remote_job_count = Column(Integer, default=0)      # 遠端/WFH 職缺數
+    netadmin_job_count = Column(Integer, default=0)    # 網管/MIS 職缺數
+    total_job_count = Column(Integer, default=0)       # 該機關總職缺數
+    job_analysis_json = Column(Text, default="")       # 分析明細 JSON
+    job_analyzed_at = Column(DateTime, nullable=True)   # 上次 104 分析時間
+    skip_reason = Column(String(100), default="")      # 略過原因（學校/中研院等）
+
+    # 模組 B：設備匹配結果
+    estimated_users = Column(Integer, default=0)
+    vpn_bandwidth_mbps = Column(Integer, default=0)
+    recommended_devices_json = Column(Text, default="[]")
+    device_match_reason = Column(Text, default="")
+    device_matched_at = Column(DateTime, nullable=True)
+
+    # 模組 C：報價結果
+    market_price = Column(Integer, default=0)
+    suggested_bid_price = Column(Integer, default=0)
+    margin_rate = Column(String(10), default="0.15")
+    price_source = Column(String(200), default="")
+    price_updated_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tender_id": self.tender_id,
+            "source_table": self.source_table,
+            "org_name": self.org_name,
+            "org_tax_id": self.org_tax_id,
+            "remote_score": self.remote_score,
+            "remote_job_count": self.remote_job_count,
+            "netadmin_job_count": self.netadmin_job_count,
+            "total_job_count": self.total_job_count,
+            "job_analysis_json": self.job_analysis_json,
+            "job_analyzed_at": format_tw(self.job_analyzed_at) if self.job_analyzed_at else "",
+            "skip_reason": self.skip_reason,
+            "estimated_users": self.estimated_users,
+            "vpn_bandwidth_mbps": self.vpn_bandwidth_mbps,
+            "recommended_devices_json": self.recommended_devices_json,
+            "device_match_reason": self.device_match_reason,
+            "device_matched_at": format_tw(self.device_matched_at) if self.device_matched_at else "",
+            "market_price": self.market_price,
+            "suggested_bid_price": self.suggested_bid_price,
+            "margin_rate": self.margin_rate,
+            "price_source": self.price_source,
+            "price_updated_at": format_tw(self.price_updated_at) if self.price_updated_at else "",
+            "created_at": format_tw(self.created_at),
+            "updated_at": format_tw(self.updated_at),
+        }
+
+
+class Device(Base):
+    """設備型號資料庫"""
+    __tablename__ = "devices"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    brand = Column(String(50), nullable=False)            # 品牌
+    model = Column(String(100), nullable=False)           # 型號
+    category = Column(String(50), default="")             # 類別 (防火牆/路由器/AP/交換器)
+    max_vpn_tunnels = Column(Integer, default=0)          # 最大 VPN 通道數
+    max_concurrent = Column(Integer, default=0)           # 最大並行連線數
+    throughput_mbps = Column(Integer, default=0)           # 吞吐量 (Mbps)
+    recommended_users = Column(String(50), default="")    # 適用規模
+    reference_price = Column(Integer, default=0)          # 參考售價
+    cost_price = Column(Integer, default=0)               # 成本價
+    features = Column(Text, default="")                   # 特色功能 (JSON)
+    notes = Column(Text, default="")                      # 備註
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "brand": self.brand,
+            "model": self.model,
+            "category": self.category,
+            "max_vpn_tunnels": self.max_vpn_tunnels,
+            "max_concurrent": self.max_concurrent,
+            "throughput_mbps": self.throughput_mbps,
+            "recommended_users": self.recommended_users,
+            "reference_price": self.reference_price,
+            "cost_price": self.cost_price,
+            "features": self.features,
+            "notes": self.notes,
+            "is_active": self.is_active,
+            "created_at": format_tw(self.created_at),
+            "updated_at": format_tw(self.updated_at),
+        }
+
+
+class PriceHistory(Base):
+    """價格歷史紀錄"""
+    __tablename__ = "price_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, nullable=True)            # 關聯設備
+    tender_id = Column(String(100), default="")           # 關聯案號（決標價）
+    price_type = Column(String(20), default="market")     # 'market' | 'bid_award' | 'ecommerce'
+    price = Column(Integer, nullable=False)
+    source = Column(String(200), default="")              # 來源 URL 或說明
+    recorded_at = Column(DateTime, default=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "tender_id": self.tender_id,
+            "price_type": self.price_type,
+            "price": self.price,
+            "source": self.source,
+            "recorded_at": format_tw(self.recorded_at),
+        }
+
+
+class OrgContact(Base):
+    """企業通訊錄"""
+    __tablename__ = "org_contacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    org_name = Column(String(200), nullable=False)
+    org_tax_id = Column(String(20), default="")
+    contact_name = Column(String(100), default="")
+    title = Column(String(100), default="")
+    phone = Column(String(50), default="")
+    mobile = Column(String(50), default="")
+    email = Column(String(200), default="")
+    address = Column(String(500), default="")
+    department = Column(String(100), default="")
+    source_tender_id = Column(String(100), default="")
+    tags = Column(String(500), default="")
+    notes = Column(Text, default="")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "org_name": self.org_name,
+            "org_tax_id": self.org_tax_id,
+            "contact_name": self.contact_name,
+            "title": self.title,
+            "phone": self.phone,
+            "mobile": self.mobile,
+            "email": self.email,
+            "address": self.address,
+            "department": self.department,
+            "source_tender_id": self.source_tender_id,
+            "tags": self.tags,
+            "notes": self.notes,
+            "is_active": self.is_active,
+            "created_at": format_tw(self.created_at),
+            "updated_at": format_tw(self.updated_at),
+        }
+
+
+class AnalysisLog(Base):
+    """分析執行紀錄"""
+    __tablename__ = "analysis_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tender_id = Column(String(100), default="")
+    module = Column(String(20), nullable=False)           # 'job104' | 'device' | 'pricing'
+    status = Column(String(20), default="running")        # 'running' | 'success' | 'error' | 'skipped'
+    message = Column(Text, default="")
+    started_at = Column(DateTime, default=datetime.now)
+    finished_at = Column(DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "tender_id": self.tender_id,
+            "module": self.module,
+            "status": self.status,
+            "message": self.message,
+            "started_at": format_tw(self.started_at),
+            "finished_at": format_tw(self.finished_at) if self.finished_at else "",
+        }
+
+
 # 建立資料庫引擎與 Session
 engine = create_engine(config.DATABASE_URL, echo=False)
 

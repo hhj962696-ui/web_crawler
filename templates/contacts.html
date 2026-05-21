@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="header-container">
+    <h2>📇 企業通訊錄</h2>
+    <div class="actions">
+        <button class="btn btn-secondary" onclick="exportCSV()">📋 匯出 CSV</button>
+        <button class="btn btn-primary" onclick="exportVCardAll()" style="background: linear-gradient(135deg, #8e44ad, #9b59b6);">📱 匯出全部 vCard</button>
+        <button class="btn btn-primary" onclick="openContactModal()">➕ 新增聯絡人</button>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table" id="contactsTable">
+            <thead>
+                <tr>
+                    <th>機關/公司名稱</th>
+                    <th>聯絡人</th>
+                    <th>職稱</th>
+                    <th>電話</th>
+                    <th>手機</th>
+                    <th>來源案號</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="contactsList">
+                <tr><td colspan="7" style="text-align:center;">載入中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 聯絡人編輯 Modal -->
+<div id="contactModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+        <span class="close-btn" onclick="closeContactModal()">&times;</span>
+        <h3 id="modalTitle">新增聯絡人</h3>
+        
+        <form id="contactForm" onsubmit="saveContact(event)">
+            <input type="hidden" id="contactId">
+            <div class="form-group">
+                <label class="form-label">機關名稱 (必填)</label>
+                <input type="text" id="cOrgName" class="input" required>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">聯絡人姓名 (必填)</label>
+                    <input type="text" id="cName" class="input" required>
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">職稱</label>
+                    <input type="text" id="cTitle" class="input">
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">辦公室電話</label>
+                    <input type="text" id="cPhone" class="input">
+                </div>
+                <div class="form-group" style="flex:1;">
+                    <label class="form-label">手機</label>
+                    <input type="text" id="cMobile" class="input">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" id="cEmail" class="input">
+            </div>
+            <div class="form-group">
+                <label class="form-label">備註</label>
+                <textarea id="cNotes" class="input" rows="2"></textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">儲存</button>
+        </form>
+    </div>
+</div>
+
+<!-- QR Code Modal -->
+<div id="qrModal" class="modal">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+        <span class="close-btn" onclick="closeQrModal()">&times;</span>
+        <h3>掃描加入通訊錄</h3>
+        <p style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 1rem;">打開 iPhone 相機掃描即可直接新增聯絡人</p>
+        <div id="qrContainer" style="margin: 2rem 0;">
+            <img id="qrImage" src="" alt="QR Code" style="max-width: 100%; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+        </div>
+        <button class="btn btn-secondary" onclick="closeQrModal()" style="width: 100%;">關閉</button>
+    </div>
+</div>
+
+<script>
+let currentContacts = [];
+
+async function loadContacts() {
+    try {
+        const resp = await fetch('/api/contacts');
+        const data = await resp.json();
+        currentContacts = data.contacts || [];
+        renderContacts();
+    } catch (e) {
+        showToast('載入失敗', 'error');
+    }
+}
+
+function renderContacts() {
+    const tbody = document.getElementById('contactsList');
+    if (!currentContacts.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">目前無聯絡人資料</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = currentContacts.map(c => `
+        <tr>
+            <td><strong>${c.org_name}</strong></td>
+            <td>${c.contact_name}</td>
+            <td><span class="badge" style="background:#34495e;">${c.title || '-'}</span></td>
+            <td>${c.phone || '-'}</td>
+            <td>${c.mobile || '-'}</td>
+            <td>${c.source_tender_id ? `<a href="/?search=${c.source_tender_id}" style="color:#3498db;text-decoration:none;">${c.source_tender_id}</a>` : '-'}</td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="showQRCode(${c.id})" title="顯示 QR Code">📱</button>
+                <button class="btn btn-sm btn-secondary" onclick="editContact(${c.id})">編輯</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteContact(${c.id})" style="background:#e74c3c;color:#fff;">刪除</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openContactModal() {
+    document.getElementById('contactForm').reset();
+    document.getElementById('contactId').value = '';
+    document.getElementById('modalTitle').textContent = '新增聯絡人';
+    document.getElementById('contactModal').style.display = 'flex';
+}
+
+function closeContactModal() {
+    document.getElementById('contactModal').style.display = 'none';
+}
+
+function editContact(id) {
+    const c = currentContacts.find(x => x.id === id);
+    if (!c) return;
+    
+    document.getElementById('contactId').value = c.id;
+    document.getElementById('cOrgName').value = c.org_name;
+    document.getElementById('cName').value = c.contact_name;
+    document.getElementById('cTitle').value = c.title || '';
+    document.getElementById('cPhone').value = c.phone || '';
+    document.getElementById('cMobile').value = c.mobile || '';
+    document.getElementById('cEmail').value = c.email || '';
+    document.getElementById('cNotes').value = c.notes || '';
+    
+    document.getElementById('modalTitle').textContent = '編輯聯絡人';
+    document.getElementById('contactModal').style.display = 'flex';
+}
+
+async function saveContact(e) {
+    e.preventDefault();
+    const id = document.getElementById('contactId').value;
+    const payload = {
+        org_name: document.getElementById('cOrgName').value,
+        contact_name: document.getElementById('cName').value,
+        title: document.getElementById('cTitle').value,
+        phone: document.getElementById('cPhone').value,
+        mobile: document.getElementById('cMobile').value,
+        email: document.getElementById('cEmail').value,
+        notes: document.getElementById('cNotes').value
+    };
+    
+    const url = id ? `/api/contacts/${id}` : '/api/contacts';
+    const method = id ? 'PUT' : 'POST';
+    
+    try {
+        const resp = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await resp.json();
+        
+        if (result.success) {
+            showToast(result.message, 'success');
+            closeContactModal();
+            loadContacts();
+        } else {
+            showToast(result.message, 'error');
+        }
+    } catch (err) {
+        showToast('儲存失敗', 'error');
+    }
+}
+
+async function deleteContact(id) {
+    if (!confirm('確定要刪除此聯絡人嗎？')) return;
+    try {
+        const resp = await fetch(`/api/contacts/${id}`, { method: 'DELETE' });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(result.message, 'success');
+            loadContacts();
+        }
+    } catch (e) {
+        showToast('刪除失敗', 'error');
+    }
+}
+
+function exportCSV() {
+    window.location.href = '/api/contacts/export-csv';
+}
+
+function exportVCardAll() {
+    window.location.href = '/api/contacts/export-vcard';
+}
+
+function showQRCode(id) {
+    const img = document.getElementById('qrImage');
+    img.src = `/api/contacts/${id}/qrcode?t=${new Date().getTime()}`;
+    document.getElementById('qrModal').style.display = 'flex';
+}
+
+function closeQrModal() {
+    document.getElementById('qrModal').style.display = 'none';
+}
+
+// 點擊 Modal 外圍關閉
+window.onclick = function(event) {
+    if (event.target == document.getElementById('contactModal')) {
+        closeContactModal();
+    }
+    if (event.target == document.getElementById('qrModal')) {
+        closeQrModal();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadContacts);
+</script>
+{% endblock %}

@@ -176,6 +176,38 @@ async function manualBiddingScrape() {
     }
 }
 
+function resetJob104Button() {
+    const btn = document.getElementById('btnManualJob104');
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">🎯</span><span>手動 104 探測</span>';
+        btn.style.animation = '';
+    }
+}
+
+async function manualJob104() {
+    const btn = document.getElementById('btnManualJob104');
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
+
+    try {
+        const resp = await fetch('/api/job104/manual', { method: 'POST' });
+        const data = await resp.json();
+        if (data.started) {
+            showToast(data.message, 'success');
+            checkScrapeStatus('job104');
+        } else {
+            showToast(data.message, 'warning');
+            resetJob104Button();
+        }
+    } catch (e) {
+        showToast('請求失敗', 'error');
+        resetJob104Button();
+    }
+}
+
 // === 爬蟲狀態檢查 ===
 let statusCheckInterval = null;
 let statusCheckCount = 0;
@@ -195,6 +227,13 @@ function setBiddingScrapeButtonRunning() {
     btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
 }
 
+function setJob104ButtonRunning() {
+    const btn = document.getElementById('btnManualJob104');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>執行中...</span>';
+}
+
 /** 頁面載入或切換回來時，與後端執行狀態同步 */
 async function syncScrapeButtonState() {
     try {
@@ -207,9 +246,13 @@ async function syncScrapeButtonState() {
         } else if (data.mode === 'appeal') {
             setScrapeButtonRunning();
             checkScrapeStatus('appeal');
+        } else if (data.mode === 'job104') {
+            setJob104ButtonRunning();
+            checkScrapeStatus('job104');
         } else {
             setScrapeButtonRunning();
             setBiddingScrapeButtonRunning();
+            setJob104ButtonRunning();
             checkScrapeStatus('any');
         }
     } catch (e) {
@@ -233,7 +276,11 @@ function checkScrapeStatus(kind) {
                 statusCheckInterval = null;
                 resetScrapeButton();
                 resetBiddingScrapeButton();
-                const label = kind === 'bidding' ? '公開招標爬蟲' : '爬蟲';
+                resetJob104Button();
+                let label = '系統';
+                if (kind === 'bidding') label = '公開招標爬蟲';
+                else if (kind === 'appeal') label = '公開徵求爬蟲';
+                else if (kind === 'job104') label = '104 探測器';
                 showToast(`${label}執行完畢！`, 'success');
                 setTimeout(() => location.reload(), 1500);
             }
@@ -246,6 +293,7 @@ function checkScrapeStatus(kind) {
             statusCheckInterval = null;
             resetScrapeButton();
             resetBiddingScrapeButton();
+            resetJob104Button();
         }
     }, 5000);
 }
