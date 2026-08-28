@@ -31,6 +31,7 @@
 | **Phase 6** | **業務中台與全面整合** | 進入 **階段 6**，實作一個暗黑科技感 Glassmorphism 整合業務儀表板 `/sales`。提供統計數據與前 5 大設備熱度排行。實作 AJAX 雙滑桿微調抽屜面板，業務可即時微調估計人數與毛利率，無痛動態重算設備匹配與標價。整合每日 17:00 Discord 業務摘要推播與一鍵承辦人同步通訊錄。 |
 | **Phase 7** | **行動戰術面板與全響應式中台** | 進入 **階段 7**，實作 PWA 行動端定位 LBS 戰術面板 `/mobile_sales`。對接 OSM Nominatim 自動編碼與 HTML5 語音識別。重構桌面版業務儀表板 `/sales`，將佈局升級為 3:9 大螢幕比例，並全面優化行動端折疊、主商機優先排序、橫向自適應滾動表單與防冒泡漢堡選單。 |
 | **Phase 8** | **Synology NAS 部署與自動遷移** | 進入 **階段 8**，實作 Synology NAS 生產環境一鍵高可用適應。新增掛載目錄唯讀權限自動診斷引導；實作 SQLite WAL 連線 Pragma 容錯降級（不支援 WAL 時自動降為 `DELETE`）；研發通用 SQLite 資料庫自動擴充欄位遷移系統（Auto-Migration），啟動時自動比對模型並為現有資料表補齊 `bid_bond` 等缺失欄位；新增 500 全域異常 Traceback 精美診斷網頁。 |
+| **Phase 9** | **全寬置頂 Nav-Bar、原廠通訊錄、時間軸與 MariaDB** | 進入 **階段 9**，重構全站導覽為全寬水平置頂 Nav-Bar，支援「中台管理 ▾」下拉選單與手機 RWD 抽屜；通訊錄擴充 5 筆分頁與「原廠通訊錄」分頁，支援聯絡地址欄位；「追蹤案件」升級為雙節點時間軸 (Timeline View) 完整比對公開徵求與招標截止日期；全站支援 NAS MariaDB/MySQL 整合與一鍵資料搬移工具（`scripts/migrate_sqlite_to_mariadb.py`），徹底解決高併發與檔案鎖定；修復 WatchFiles 熱重載迴圈，確保系統高效穩定。 |
 
 
 
@@ -41,7 +42,7 @@
 - **Python 3.12+**：FastAPI, Selenium, SQLAlchemy (ORM), APScheduler
 - **前端技術**：Jinja2, HTML5, Vanilla CSS, Javascript (採用現代 Glassmorphism 微光與暗色系美學，無重型 JS 框架)
 - **其他套件**：`qrcode[pil]` (產生通訊錄 QR Code), `pydantic` (資料驗證)
-- **資料庫**：SQLite 3 (啟用 WAL 寫入預錄日誌模式，確保高並行讀寫效能)
+- **資料庫**：SQLite 3 (預設本機開發) / **MariaDB 10+ / MySQL** (推薦 NAS Docker 生產環境，搭配 `PyMySQL` 驅動)
 - **環境**：Windows 11 (本機開發) / Synology NAS Docker (生產部署)
 
 ---
@@ -302,5 +303,5 @@ python run.py
 6. **升級版本後 SQLite 欄位缺失**：新版本資料模型包含新欄位（如 `bid_bond`），但 NAS 現有舊資料庫檔案 `database.db` 無此欄位，導致查詢出錯。專案已研發通用 SQLite Auto-Migration 技術，啟動時會全自動完成欄位比對並 `ALTER TABLE` 補齊，無須手動重建資料庫。
 
 ---
-*最後更新時間：2026-05-21 — 全面完成模組 A、B、C、LBS行動中台（Phase 7）及 Synology NAS 部署高可用與資料庫自動遷移（Phase 8）研發，完美打通部署與外勤落地閉環。*
+*最後更新時間：2026-08-28 — 全面完成全寬置頂導覽列、原廠通訊錄分頁、追蹤案件時間軸 (Phase 9) 及 NAS MariaDB 高可用升級與資料無縫搬移，完成系統現代化重構。*
 
