@@ -36,3 +36,9 @@ Thumbs.db
 *.db-wal
 *.db-shm
 .permission_test
+
+# Gitea Data
+
+
+# Gitea Data
+gitea/data/

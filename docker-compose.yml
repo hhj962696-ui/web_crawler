@@ -6,7 +6,6 @@ services:
       dockerfile: Dockerfile
     image: pcc-scraper:latest
     container_name: pcc-scraper
-    # DS423 為 ARM64；在 NAS 上 build 可刪除整段 platform
     platform: linux/arm64
     restart: unless-stopped
     env_file:
@@ -16,7 +15,7 @@ services:
       DATA_DIR: /app/data
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
-      APP_RELOAD: "true"
+      APP_RELOAD: "false"
       CHROMIUM_BIN: /usr/bin/chromium
       CHROMEDRIVER_PATH: /usr/bin/chromedriver
     ports:

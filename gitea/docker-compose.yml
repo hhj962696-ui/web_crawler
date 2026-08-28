@@ -1,0 +1,18 @@
+version: "3"
+
+services:
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - TZ=Asia/Taipei
+    ports:
+      - "3000:3000"   # Gitea Web 介面 (http://100.93.83.53:3000)
+      - "2222:22"     # Git SSH 通訊埠
+    volumes:
+      - ./data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
