@@ -25,7 +25,9 @@
                 </tr>
             </thead>
             <tbody id="devicesList">
-                <tr><td colspan="8" style="text-align:center;">載入中...</td></tr>
+                <tr>
+                    <td colspan="8" style="text-align:center;">載入中...</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -36,7 +38,7 @@
     <div class="modal-content" style="max-width: 600px;">
         <span class="close-btn" onclick="closeDeviceModal()">&times;</span>
         <h3 id="modalTitle">新增設備</h3>
-        
+
         <form id="deviceForm" onsubmit="saveDevice(event)">
             <input type="hidden" id="deviceId">
             <div class="form-group">
@@ -75,7 +77,7 @@
                 <label class="form-label">是否啟用</label>
                 <input type="checkbox" id="devActive" checked>
             </div>
-            
+
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">儲存</button>
         </form>
     </div>
@@ -86,11 +88,11 @@
     <div class="modal-content" style="max-width: 800px;">
         <span class="close-btn" onclick="closePriceModal()">&times;</span>
         <h3 id="priceModalTitle">價格歷史趨勢</h3>
-        
+
         <div style="margin: 1rem 0; height: 300px;">
             <canvas id="priceChart"></canvas>
         </div>
-        
+
         <hr style="margin: 1rem 0; border:0; border-top:1px solid #ecf0f1;">
         <h4>手動新增價格紀錄</h4>
         <form id="priceForm" onsubmit="savePrice(event)" style="display:flex; gap:1rem; align-items:flex-end;">
@@ -117,28 +119,28 @@
 </div>
 
 <script>
-let currentDevices = [];
-let priceChartInstance = null;
+    let currentDevices = [];
+    let priceChartInstance = null;
 
-async function loadDevices() {
-    try {
-        const resp = await fetch('/api/devices');
-        const data = await resp.json();
-        currentDevices = data.devices || [];
-        renderDevices();
-    } catch (e) {
-        showToast('載入失敗', 'error');
+    async function loadDevices() {
+        try {
+            const resp = await fetch('/api/devices');
+            const data = await resp.json();
+            currentDevices = data.devices || [];
+            renderDevices();
+        } catch (e) {
+            showToast('載入失敗', 'error');
+        }
     }
-}
 
-function renderDevices() {
-    const tbody = document.getElementById('devicesList');
-    if (!currentDevices.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">目前無設備資料</td></tr>';
-        return;
-    }
-    
-    tbody.innerHTML = currentDevices.map(d => `
+    function renderDevices() {
+        const tbody = document.getElementById('devicesList');
+        if (!currentDevices.length) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">目前無設備資料</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = currentDevices.map(d => `
         <tr>
             <td><strong>${d.brand}</strong></td>
             <td>${d.model}</td>
@@ -154,223 +156,223 @@ function renderDevices() {
             </td>
         </tr>
     `).join('');
-}
+    }
 
-function openDeviceModal() {
-    document.getElementById('deviceForm').reset();
-    document.getElementById('deviceId').value = '';
-    document.getElementById('modalTitle').textContent = '新增設備';
-    document.getElementById('deviceModal').style.display = 'flex';
-}
+    function openDeviceModal() {
+        document.getElementById('deviceForm').reset();
+        document.getElementById('deviceId').value = '';
+        document.getElementById('modalTitle').textContent = '新增設備';
+        document.getElementById('deviceModal').style.display = 'flex';
+    }
 
-function closeDeviceModal() {
-    document.getElementById('deviceModal').style.display = 'none';
-}
+    function closeDeviceModal() {
+        document.getElementById('deviceModal').style.display = 'none';
+    }
 
-function editDevice(id) {
-    const d = currentDevices.find(x => x.id === id);
-    if (!d) return;
-    
-    document.getElementById('deviceId').value = d.id;
-    document.getElementById('devBrand').value = d.brand;
-    document.getElementById('devModel').value = d.model;
-    document.getElementById('devCategory').value = d.category || '';
-    document.getElementById('devVpn').value = d.max_vpn_tunnels || 0;
-    document.getElementById('devConcurrent').value = d.max_concurrent || 0;
-    document.getElementById('devRefPrice').value = d.reference_price || 0;
-    document.getElementById('devCostPrice').value = d.cost_price || 0;
-    document.getElementById('devActive').checked = d.is_active;
-    
-    document.getElementById('modalTitle').textContent = '編輯設備';
-    document.getElementById('deviceModal').style.display = 'flex';
-}
+    function editDevice(id) {
+        const d = currentDevices.find(x => x.id === id);
+        if (!d) return;
 
-async function saveDevice(e) {
-    e.preventDefault();
-    const id = document.getElementById('deviceId').value;
-    const payload = {
-        brand: document.getElementById('devBrand').value,
-        model: document.getElementById('devModel').value,
-        category: document.getElementById('devCategory').value,
-        max_vpn_tunnels: parseInt(document.getElementById('devVpn').value),
-        max_concurrent: parseInt(document.getElementById('devConcurrent').value),
-        reference_price: parseFloat(document.getElementById('devRefPrice').value),
-        cost_price: parseFloat(document.getElementById('devCostPrice').value),
-        is_active: document.getElementById('devActive').checked
-    };
-    
-    const url = id ? `/api/devices/${id}` : '/api/devices';
-    const method = id ? 'PUT' : 'POST';
-    
-    try {
-        const resp = await fetch(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        const result = await resp.json();
-        
-        if (result.success) {
-            showToast(result.message, 'success');
+        document.getElementById('deviceId').value = d.id;
+        document.getElementById('devBrand').value = d.brand;
+        document.getElementById('devModel').value = d.model;
+        document.getElementById('devCategory').value = d.category || '';
+        document.getElementById('devVpn').value = d.max_vpn_tunnels || 0;
+        document.getElementById('devConcurrent').value = d.max_concurrent || 0;
+        document.getElementById('devRefPrice').value = d.reference_price || 0;
+        document.getElementById('devCostPrice').value = d.cost_price || 0;
+        document.getElementById('devActive').checked = d.is_active;
+
+        document.getElementById('modalTitle').textContent = '編輯設備';
+        document.getElementById('deviceModal').style.display = 'flex';
+    }
+
+    async function saveDevice(e) {
+        e.preventDefault();
+        const id = document.getElementById('deviceId').value;
+        const payload = {
+            brand: document.getElementById('devBrand').value,
+            model: document.getElementById('devModel').value,
+            category: document.getElementById('devCategory').value,
+            max_vpn_tunnels: parseInt(document.getElementById('devVpn').value),
+            max_concurrent: parseInt(document.getElementById('devConcurrent').value),
+            reference_price: parseFloat(document.getElementById('devRefPrice').value),
+            cost_price: parseFloat(document.getElementById('devCostPrice').value),
+            is_active: document.getElementById('devActive').checked
+        };
+
+        const url = id ? `/api/devices/${id}` : '/api/devices';
+        const method = id ? 'PUT' : 'POST';
+
+        try {
+            const resp = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await resp.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeDeviceModal();
+                loadDevices();
+            } else {
+                showToast(result.message, 'error');
+            }
+        } catch (err) {
+            showToast('儲存失敗', 'error');
+        }
+    }
+
+    async function deleteDevice(id) {
+        if (!confirm('確定要刪除此設備嗎？')) return;
+        try {
+            const resp = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+            const result = await resp.json();
+            if (result.success) {
+                showToast(result.message, 'success');
+                loadDevices();
+            }
+        } catch (e) {
+            showToast('刪除失敗', 'error');
+        }
+    }
+
+    // 點擊 Modal 外圍關閉
+    window.onclick = function (event) {
+        if (event.target == document.getElementById('deviceModal')) {
             closeDeviceModal();
-            loadDevices();
-        } else {
-            showToast(result.message, 'error');
         }
-    } catch (err) {
-        showToast('儲存失敗', 'error');
-    }
-}
-
-async function deleteDevice(id) {
-    if (!confirm('確定要刪除此設備嗎？')) return;
-    try {
-        const resp = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
-        const result = await resp.json();
-        if (result.success) {
-            showToast(result.message, 'success');
-            loadDevices();
+        if (event.target == document.getElementById('priceModal')) {
+            closePriceModal();
         }
-    } catch (e) {
-        showToast('刪除失敗', 'error');
     }
-}
 
-// 點擊 Modal 外圍關閉
-window.onclick = function(event) {
-    if (event.target == document.getElementById('deviceModal')) {
-        closeDeviceModal();
+    async function showPriceHistory(id) {
+        const d = currentDevices.find(x => x.id === id);
+        if (!d) return;
+
+        document.getElementById('priceDevId').value = id;
+        document.getElementById('priceModalTitle').textContent = `價格歷史 - ${d.brand} ${d.model}`;
+        document.getElementById('priceModal').style.display = 'flex';
+
+        await renderPriceChart(id);
     }
-    if (event.target == document.getElementById('priceModal')) {
-        closePriceModal();
+
+    function closePriceModal() {
+        document.getElementById('priceModal').style.display = 'none';
     }
-}
 
-async function showPriceHistory(id) {
-    const d = currentDevices.find(x => x.id === id);
-    if (!d) return;
-    
-    document.getElementById('priceDevId').value = id;
-    document.getElementById('priceModalTitle').textContent = `價格歷史 - ${d.brand} ${d.model}`;
-    document.getElementById('priceModal').style.display = 'flex';
-    
-    await renderPriceChart(id);
-}
+    async function renderPriceChart(deviceId) {
+        try {
+            const resp = await fetch(`/api/prices/history?device_id=${deviceId}&days=90`);
+            const data = await resp.json();
 
-function closePriceModal() {
-    document.getElementById('priceModal').style.display = 'none';
-}
+            if (!data.success) {
+                showToast(data.message, 'error');
+                return;
+            }
 
-async function renderPriceChart(deviceId) {
-    try {
-        const resp = await fetch(`/api/prices/history?device_id=${deviceId}&days=90`);
-        const data = await resp.json();
-        
-        if (!data.success) {
-            showToast(data.message, 'error');
-            return;
-        }
-        
-        const history = data.history || [];
-        const labels = history.map(h => h.recorded_at.split('T')[0]);
-        const prices = history.map(h => h.price);
-        
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        if (priceChartInstance) {
-            priceChartInstance.destroy();
-        }
-        
-        if (history.length === 0) {
-            // 提供預設空圖表
+            const history = data.history || [];
+            const labels = history.map(h => h.recorded_at.split('T')[0]);
+            const prices = history.map(h => h.price);
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            if (priceChartInstance) {
+                priceChartInstance.destroy();
+            }
+
+            if (history.length === 0) {
+                // 提供預設空圖表
+                priceChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: ['尚無資料'], datasets: [{ label: '價格', data: [0] }] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        color: '#ffffff',
+                        scales: {
+                            x: { ticks: { color: '#ffffff' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                            y: { ticks: { color: '#ffffff' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                        },
+                        plugins: { legend: { labels: { color: '#ffffff' } } }
+                    }
+                });
+                return;
+            }
+
             priceChartInstance = new Chart(ctx, {
                 type: 'line',
-                data: { labels: ['尚無資料'], datasets: [{ label: '價格', data: [0] }] },
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '市場價格',
+                        data: prices,
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.4)', // 增加不透明度讓圖例方塊更明顯
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    color: '#ffffff',
+                    color: '#ffffff', // 整體字體顏色設為純白
                     scales: {
-                        x: { ticks: { color: '#ffffff' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
-                        y: { ticks: { color: '#ffffff' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                        x: {
+                            ticks: { color: '#ffffff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            ticks: { color: '#ffffff' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
                     },
-                    plugins: { legend: { labels: { color: '#ffffff' } } }
-                }
-            });
-            return;
-        }
-        
-        priceChartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: '市場價格',
-                    data: prices,
-                    borderColor: '#3498db',
-                    backgroundColor: 'rgba(52, 152, 219, 0.4)', // 增加不透明度讓圖例方塊更明顯
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                color: '#ffffff', // 整體字體顏色設為純白
-                scales: {
-                    x: {
-                        ticks: { color: '#ffffff' },
-                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                    },
-                    y: { 
-                        beginAtZero: false,
-                        ticks: { color: '#ffffff' },
-                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: '#ffffff'
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#ffffff'
+                            }
                         }
                     }
                 }
-            }
-        });
-    } catch (e) {
-        showToast('載入價格歷史失敗', 'error');
-    }
-}
-
-async function savePrice(e) {
-    e.preventDefault();
-    const payload = {
-        device_id: parseInt(document.getElementById('priceDevId').value),
-        price: parseFloat(document.getElementById('pPrice').value),
-        price_type: document.getElementById('pType').value,
-        source: document.getElementById('pSource').value
-    };
-    
-    try {
-        const resp = await fetch('/api/prices/record', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        const result = await resp.json();
-        
-        if (result.success) {
-            showToast(result.message, 'success');
-            document.getElementById('pPrice').value = '';
-            document.getElementById('pSource').value = '';
-            renderPriceChart(payload.device_id);
-        } else {
-            showToast(result.message, 'error');
+            });
+        } catch (e) {
+            showToast('載入價格歷史失敗', 'error');
         }
-    } catch (err) {
-        showToast('儲存失敗', 'error');
     }
-}
 
-document.addEventListener('DOMContentLoaded', loadDevices);
+    async function savePrice(e) {
+        e.preventDefault();
+        const payload = {
+            device_id: parseInt(document.getElementById('priceDevId').value),
+            price: parseFloat(document.getElementById('pPrice').value),
+            price_type: document.getElementById('pType').value,
+            source: document.getElementById('pSource').value
+        };
+
+        try {
+            const resp = await fetch('/api/prices/record', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await resp.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                document.getElementById('pPrice').value = '';
+                document.getElementById('pSource').value = '';
+                renderPriceChart(payload.device_id);
+            } else {
+                showToast(result.message, 'error');
+            }
+        } catch (err) {
+            showToast('儲存失敗', 'error');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDevices);
 </script>
 {% endblock %}

@@ -28,6 +28,7 @@ class ContactCreate(BaseModel):
     department: Optional[str] = ""
     tags: Optional[str] = ""
     notes: Optional[str] = ""
+    contact_type: Optional[str] = "org"
 
 class ContactUpdate(ContactCreate):
     is_active: Optional[bool] = True
@@ -41,11 +42,14 @@ async def contacts_page(request: Request):
     })
 
 @router.get("/api/contacts")
-async def list_contacts():
+async def list_contacts(type: Optional[str] = None):
     """取得所有聯絡人 (JSON)"""
     db = SessionLocal()
     try:
-        contacts = db.query(OrgContact).order_by(OrgContact.org_name).all()
+        query = db.query(OrgContact)
+        if type:
+            query = query.filter(OrgContact.contact_type == type)
+        contacts = query.order_by(OrgContact.org_name).all()
         return {"contacts": [c.to_dict() for c in contacts]}
     finally:
         db.close()
@@ -135,11 +139,14 @@ async def export_single_vcard(contact_id: int):
         db.close()
 
 @router.get("/api/contacts/export-vcard")
-async def export_all_vcards():
+async def export_all_vcards(type: Optional[str] = None):
     """匯出所有聯絡人 vCard"""
     db = SessionLocal()
     try:
-        contacts = db.query(OrgContact).filter_by(is_active=True).all()
+        query = db.query(OrgContact).filter_by(is_active=True)
+        if type:
+            query = query.filter(OrgContact.contact_type == type)
+        contacts = query.all()
         vcard_strs = [generate_vcard(c) for c in contacts]
         combined_vcard = "\n".join(vcard_strs)
         
@@ -153,11 +160,14 @@ async def export_all_vcards():
         db.close()
 
 @router.get("/api/contacts/export-csv")
-async def export_contacts_csv():
+async def export_contacts_csv(type: Optional[str] = None):
     """匯出所有聯絡人 CSV"""
     db = SessionLocal()
     try:
-        contacts = db.query(OrgContact).all()
+        query = db.query(OrgContact)
+        if type:
+            query = query.filter(OrgContact.contact_type == type)
+        contacts = query.all()
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow([

@@ -91,6 +91,7 @@ class Config:
     # 應用
     APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
     APP_PORT = int(os.getenv("APP_PORT", "8000"))
+    APP_RELOAD = os.getenv("APP_RELOAD", "false").lower() == "true"
 
     # 爬蟲設定
     PCC_BASE_URL = "https://web.pcc.gov.tw"
@@ -104,7 +105,7 @@ class Config:
     MAX_RETRIES = 3  # 最大重試次數
 
     # 資料庫
-    DATABASE_URL = f"sqlite:///{DB_PATH}"
+    DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 
     @classmethod
     def reload(cls):
@@ -155,7 +156,7 @@ class Config:
         cls.DB_PATH = cls.DATA_DIR / "database.db"
         cls.LOG_DIR = cls.DATA_DIR / "logs"
         cls.LOG_FILE = cls.LOG_DIR / "scraper.log"
-        cls.DATABASE_URL = f"sqlite:///{cls.DB_PATH}"
+        cls.DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{cls.DB_PATH}")
         cls.CHROME_HEADLESS = os.getenv("CHROME_HEADLESS", "true").lower() == "true"
         cls.CHROMIUM_BIN = os.getenv("CHROMIUM_BIN", "").strip()
         cls.CHROMEDRIVER_PATH = os.getenv("CHROMEDRIVER_PATH", "").strip()

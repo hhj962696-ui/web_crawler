@@ -26,6 +26,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# 映像檔內仍保有一份基礎代碼
 COPY . .
 
 RUN mkdir -p /app/data/logs \

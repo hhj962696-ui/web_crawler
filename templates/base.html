@@ -2,7 +2,7 @@
 <html lang="zh-Hant-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="政府電子採購網公開徵求爬蟲系統 — 本地端自動化監控平台">
     <title>{% block title %}採購爬蟲系統{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,114 +11,159 @@
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <!-- 側邊欄導航 -->
-    <nav class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">
+    <!-- 水平置頂導航列 (Top Navbar) -->
+    <header class="top-navbar" id="topNavbar">
+        <div class="navbar-left">
+            <!-- 品牌 Logo -->
+            <a href="/" class="navbar-brand">
                 <span class="logo-icon">🔍</span>
                 <span class="logo-text">採購爬蟲系統</span>
-            </div>
-            <button class="sidebar-toggle" id="sidebarToggle" aria-label="切換側邊欄">☰</button>
+            </a>
+
+            <!-- 主選單連結 (水平橫向排列) -->
+            <ul class="nav-links-row" id="navLinksRow">
+                <li>
+                    <a href="/" class="top-nav-item {% if active_page == 'index' %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        <span>公開徵求</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/bidding" class="top-nav-item {% if active_page == 'bidding' %}active{% endif %}">
+                        <span class="nav-icon">📢</span>
+                        <span>公開招標</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/tracked" class="top-nav-item {% if active_page == 'tracked' %}active{% endif %}">
+                        <span class="nav-icon">⭐</span>
+                        <span>追蹤案件</span>
+                        {% if tracked_count is defined and tracked_count > 0 %}
+                        <span class="badge">{{ tracked_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+
+                <!-- 中台管理 下拉選單 (Dropdown) -->
+                <li class="dropdown-container {% if active_page in ['sales', 'devices', 'contacts', 'mobile_sales'] %}active-parent{% endif %}" id="dropdownParent">
+                    <button class="top-nav-item dropdown-toggle-btn" onclick="toggleDropdown(event)">
+                        <span class="nav-icon">💼</span>
+                        <span>中台管理</span>
+                        <span class="arrow-down">▾</span>
+                    </button>
+                    <div class="dropdown-menu-box" id="dropdownMenu">
+                        <a href="/sales" class="dropdown-menu-item {% if active_page == 'sales' %}active{% endif %}">
+                            <span class="item-icon">📊</span> 業務中台
+                        </a>
+                        <a href="/devices" class="dropdown-menu-item {% if active_page == 'devices' %}active{% endif %}">
+                            <span class="item-icon">🖥️</span> 設備管理
+                        </a>
+                        <a href="/contacts" class="dropdown-menu-item {% if active_page == 'contacts' %}active{% endif %}">
+                            <span class="item-icon">📇</span> 企業通訊錄
+                        </a>
+                        <a href="/contacts?type=vendor" class="dropdown-menu-item">
+                            <span class="item-icon">🏭</span> 原廠通訊錄
+                        </a>
+                        <a href="/mobile_sales" class="dropdown-menu-item {% if active_page == 'mobile_sales' %}active{% endif %}">
+                            <span class="item-icon">📱</span> 行動外勤戰術
+                        </a>
+                    </div>
+                </li>
+
+                <li>
+                    <a href="/settings" class="top-nav-item {% if active_page == 'settings' %}active{% endif %}">
+                        <span class="nav-icon">⚙️</span>
+                        <span>系統設定</span>
+                    </a>
+                </li>
+            </ul>
         </div>
 
-        <ul class="nav-links">
+        <div class="navbar-right">
+            <!-- 爬蟲手動觸發按鈕區 -->
+            <div class="scrape-actions">
+                <button class="btn btn-primary btn-glow btn-sm" id="btnManualScrape" onclick="manualScrape()">
+                    <span class="btn-icon">🚀</span>
+                    <span>手動徵求爬蟲</span>
+                </button>
+                <button class="btn btn-secondary btn-glow btn-sm" id="btnManualBiddingScrape" onclick="manualBiddingScrape()">
+                    <span class="btn-icon">📢</span>
+                    <span>手動招標爬蟲</span>
+                </button>
+                <button class="btn btn-primary btn-glow btn-sm" id="btnManualJob104" onclick="manualJob104()" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+                    <span class="btn-icon">🎯</span>
+                    <span>手動 104 探測</span>
+                </button>
+            </div>
+
+            <!-- 手機版漢堡切換按鈕 -->
+            <button class="mobile-hamburger-btn" id="mobileHamburger" onclick="toggleMobileMenu(event)">
+                ☰
+            </button>
+        </div>
+    </header>
+
+    <!-- 手機版展開抽屜選單 -->
+    <div class="mobile-menu-drawer" id="mobileDrawer">
+        <ul class="mobile-nav-list">
             <li>
-                <a href="/" class="nav-link {% if active_page == 'index' %}active{% endif %}" id="nav-index">
-                    <span class="nav-icon">📋</span>
-                    <span class="nav-text">公開徵求</span>
+                <a href="/" class="mobile-nav-item {% if active_page == 'index' %}active{% endif %}">
+                    <span>📋 公開徵求</span>
                 </a>
             </li>
             <li>
-                <a href="/bidding" class="nav-link {% if active_page == 'bidding' %}active{% endif %}" id="nav-bidding">
-                    <span class="nav-icon">📢</span>
-                    <span class="nav-text">公開招標</span>
+                <a href="/bidding" class="mobile-nav-item {% if active_page == 'bidding' %}active{% endif %}">
+                    <span>📢 公開招標</span>
                 </a>
             </li>
             <li>
-                <a href="/tracked" class="nav-link {% if active_page == 'tracked' %}active{% endif %}" id="nav-tracked">
-                    <span class="nav-icon">⭐</span>
-                    <span class="nav-text">追蹤案件</span>
+                <a href="/tracked" class="mobile-nav-item {% if active_page == 'tracked' %}active{% endif %}">
+                    <span>⭐ 追蹤案件</span>
                     {% if tracked_count is defined and tracked_count > 0 %}
                     <span class="badge">{{ tracked_count }}</span>
                     {% endif %}
                 </a>
             </li>
-            <li class="nav-divider" style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.1);"></li>
-            <li class="nav-header" style="color: #95a5a6; font-size: 0.8rem; padding: 5px 20px; text-transform: uppercase;">中台管理 (New)</li>
-            <li>
-                <a href="/sales" class="nav-link {% if active_page == 'sales' %}active{% endif %}" id="nav-sales">
-                    <span class="nav-icon">📊</span>
-                    <span class="nav-text">業務中台</span>
-                </a>
+            
+            <li class="mobile-dropdown-group">
+                <div class="mobile-dropdown-header" onclick="toggleMobileSubmenu(event)">
+                    <span>💼 中台管理</span>
+                    <span class="arrow">▾</span>
+                </div>
+                <div class="mobile-submenu" id="mobileSubmenu">
+                    <a href="/sales" class="mobile-subitem {% if active_page == 'sales' %}active{% endif %}">📊 業務中台</a>
+                    <a href="/devices" class="mobile-subitem {% if active_page == 'devices' %}active{% endif %}">🖥️ 設備管理</a>
+                    <a href="/contacts" class="mobile-subitem {% if active_page == 'contacts' %}active{% endif %}">📇 企業通訊錄</a>
+                    <a href="/contacts?type=vendor" class="mobile-subitem">🏭 原廠通訊錄</a>
+                    <a href="/mobile_sales" class="mobile-subitem {% if active_page == 'mobile_sales' %}active{% endif %}">📱 行動外勤戰術</a>
+                </div>
             </li>
+
             <li>
-                <a href="/devices" class="nav-link {% if active_page == 'devices' %}active{% endif %}" id="nav-devices">
-                    <span class="nav-icon">🖥️</span>
-                    <span class="nav-text">設備管理</span>
-                </a>
-            </li>
-            <li>
-                <a href="/contacts" class="nav-link {% if active_page == 'contacts' %}active{% endif %}" id="nav-contacts">
-                    <span class="nav-icon">📇</span>
-                    <span class="nav-text">企業通訊錄</span>
-                </a>
-            </li>
-            <li>
-                <a href="/mobile_sales" class="nav-link {% if active_page == 'mobile_sales' %}active{% endif %}" id="nav-mobile-sales" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(59, 130, 246, 0.15)); border: 1px solid rgba(139, 92, 246, 0.3); margin-top: 5px;">
-                    <span class="nav-icon">📱</span>
-                    <span class="nav-text" style="font-weight: 600; color: #c084fc;">行動外勤戰術</span>
-                </a>
-            </li>
-            <li class="nav-divider" style="margin: 10px 0; border-top: 1px solid rgba(255,255,255,0.1);"></li>
-            <li>
-                <a href="/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}" id="nav-settings">
-                    <span class="nav-icon">⚙️</span>
-                    <span class="nav-text">系統設定</span>
+                <a href="/settings" class="mobile-nav-item {% if active_page == 'settings' %}active{% endif %}">
+                    <span>⚙️ 系統設定</span>
                 </a>
             </li>
         </ul>
 
-        <div class="sidebar-footer">
-            <div class="schedule-info">
-                <div class="schedule-item">
-                    <span class="schedule-label">下次爬蟲</span>
-                    <span class="schedule-time" id="nextScrapeTime">--</span>
-                </div>
-                <div class="schedule-item">
-                    <span class="schedule-label">系統狀態</span>
-                    <span class="status-dot" id="systemStatus"></span>
-                    <span class="schedule-time" id="systemStatusText">運行中</span>
-                </div>
-            </div>
+        <div class="mobile-actions-box" style="margin-top:20px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.1);">
+            <button class="btn btn-primary btn-glow" onclick="manualScrape()" style="width:100%; margin-bottom: 8px;">🚀 手動徵求爬蟲</button>
+            <button class="btn btn-secondary btn-glow" onclick="manualBiddingScrape()" style="width:100%; margin-bottom: 8px;">📢 手動招標爬蟲</button>
+            <button class="btn btn-primary btn-glow" onclick="manualJob104()" style="width:100%; background: linear-gradient(135deg, #f39c12, #e67e22);">🎯 手動 104 探測</button>
         </div>
-    </nav>
+    </div>
 
     <!-- 主內容區 -->
     <main class="main-content" id="content">
-        <!-- 頂部狀態列 -->
-        <header class="top-bar">
-            <div class="top-bar-left">
-                <button class="mobile-toggle" id="mobileToggle" aria-label="開啟選單">☰</button>
-                <h1 class="page-title">{% block page_title %}採購爬蟲系統{% endblock %}</h1>
-            </div>
-            <div class="top-bar-right scrape-actions">
-                <button class="btn btn-primary btn-glow" id="btnManualScrape" onclick="manualScrape()">
-                    <span class="btn-icon">🚀</span>
-                    <span>手動徵求爬蟲</span>
-                </button>
-                <button class="btn btn-secondary btn-glow" id="btnManualBiddingScrape" onclick="manualBiddingScrape()">
-                    <span class="btn-icon">📢</span>
-                    <span>手動招標爬蟲</span>
-                </button>
-                <button class="btn btn-primary btn-glow" id="btnManualJob104" onclick="manualJob104()" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
-                    <span class="btn-icon">🎯</span>
-                    <span>手動 104 探測</span>
-                </button>
-            </div>
-        </header>
-
-        <!-- 頁面內容 -->
         <div class="content-area">
+            <div class="content-header">
+                <h1 class="page-title">{% block page_title %}採購爬蟲系統{% endblock %}</h1>
+                <div class="schedule-info-badge">
+                    <span class="status-dot" id="systemStatus"></span>
+                    <span class="schedule-label">下次爬蟲:</span>
+                    <span class="schedule-time" id="nextScrapeTime">--</span>
+                </div>
+            </div>
             {% block content %}{% endblock %}
         </div>
     </main>

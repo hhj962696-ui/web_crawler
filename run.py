@@ -102,13 +102,14 @@ def main():
     import uvicorn
     from config import config
 
-    logger.info(f"Starting web server: http://{config.APP_HOST}:{config.APP_PORT}")
+    logger.info(f"Starting web server: http://{config.APP_HOST}:{config.APP_PORT} (reload={config.APP_RELOAD})")
 
     uvicorn.run(
         "app:app",
         host=config.APP_HOST,
         port=config.APP_PORT,
-        reload=False,
+        reload=config.APP_RELOAD,
+        reload_excludes=["*.log", "*.db", "*.db-wal", "*.db-shm", "logs/*", "data/*", "scratch/*"],
         log_level="info",
     )
 

@@ -69,26 +69,27 @@
 <!-- 案件列表 -->
 <div class="tender-list" id="tenderList">
     {% for tender in tenders %}
-    <div class="tender-card glass-card" data-id="{{ tender.id }}" data-name="{{ tender.tender_name }}" data-tender-id="{{ tender.tender_id }}" data-org="{{ tender.org_name }}">
+    <div class="tender-card glass-card" data-id="{{ tender.id }}" data-name="{{ tender.tender_name }}"
+        data-tender-id="{{ tender.tender_id }}" data-org="{{ tender.org_name }}">
         <div class="tender-header">
             <div class="tender-title-row">
                 <h3 class="tender-name">
                     {% if tender.tender_url %}
-                    <a href="{{ tender.tender_url }}" target="_blank" rel="noopener noreferrer">{{ tender.tender_name }}</a>
+                    <a href="{{ tender.tender_url }}" target="_blank" rel="noopener noreferrer">{{ tender.tender_name
+                        }}</a>
                     {% else %}
                     {{ tender.tender_name }}
                     {% endif %}
                 </h3>
                 <div class="tender-card-actions">
-                    <button type="button" class="push-discord-btn"
-                            onclick="pushToDiscord({{ tender.id }}, this)"
-                            title="推送到 Discord">
+                    <button type="button" class="push-discord-btn" onclick="pushToDiscord({{ tender.id }}, this)"
+                        title="推送到 Discord">
                         📤 推送
                     </button>
                     <button type="button" class="track-btn {{ 'tracked' if tender.is_tracked else '' }}"
-                            onclick="toggleTrack({{ tender.id }}, this)"
-                            title="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}"
-                            aria-label="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}">
+                        onclick="toggleTrack({{ tender.id }}, this)"
+                        title="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}"
+                        aria-label="{{ '取消追蹤' if tender.is_tracked else '加入追蹤' }}">
                         {{ '★' if tender.is_tracked else '☆' }}
                     </button>
                 </div>
@@ -145,18 +146,17 @@
     {% endif %}
 
     {% for p in range(1, total_pages + 1) %}
-        {% if p == page %}
-        <span class="page-btn active">{{ p }}</span>
-        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
-        <a href="/?page={{ p }}" class="page-btn">{{ p }}</a>
-        {% elif p == 4 or p == total_pages - 3 %}
-        <span class="page-dots">...</span>
-        {% endif %}
-    {% endfor %}
+    {% if p == page %}
+    <span class="page-btn active">{{ p }}</span>
+    {% elif p <= 3 or p> total_pages - 3 or (p >= page - 2 and p <= page + 2) %} <a href="/?page={{ p }}"
+            class="page-btn">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span class="page-dots">...</span>
+            {% endif %}
+            {% endfor %}
 
-    {% if page < total_pages %}
-    <a href="/?page={{ page + 1 }}" class="page-btn">下一頁 →</a>
-    {% endif %}
+            {% if page < total_pages %} <a href="/?page={{ page + 1 }}" class="page-btn">下一頁 →</a>
+                {% endif %}
 </div>
 {% endif %}
 {% endblock %}
@@ -165,7 +165,7 @@
 <script>
     // 搜尋防抖
     let searchTimeout;
-    document.getElementById('searchInput').addEventListener('input', function() {
+    document.getElementById('searchInput').addEventListener('input', function () {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
             const query = this.value.toLowerCase();

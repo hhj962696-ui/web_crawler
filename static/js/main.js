@@ -328,32 +328,48 @@ async function updateScheduleInfo() {
     }
 }
 
-// === Sidebar 切換（行動裝置）===
-function initSidebar() {
-    const mobileToggle = document.getElementById('mobileToggle');
-    const sidebar = document.getElementById('sidebar');
-
-    if (mobileToggle) {
-        mobileToggle.addEventListener('click', (e) => {
-            e.stopPropagation(); // 阻止事件冒泡到 .main-content，防止側邊欄被立刻關閉
-            sidebar.classList.toggle('open');
-        });
-
-        // 點擊主內容區關閉
-        document.querySelector('.main-content').addEventListener('click', () => {
-            sidebar.classList.remove('open');
-        });
-        
-        // 點擊側邊欄本身時阻止關閉（允許點擊連結與選單內部）
-        sidebar.addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+// === Top Navbar 下拉選單與 Mobile Drawer ===
+function toggleDropdown(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
     }
+    const parent = document.getElementById('dropdownParent');
+    if (parent) {
+        parent.classList.toggle('open');
+    }
+}
+
+function toggleMobileMenu(e) {
+    if (e) e.stopPropagation();
+    const drawer = document.getElementById('mobileDrawer');
+    if (drawer) {
+        drawer.classList.toggle('open');
+    }
+}
+
+function toggleMobileSubmenu(e) {
+    if (e) e.stopPropagation();
+    const submenu = document.getElementById('mobileSubmenu');
+    if (submenu) {
+        submenu.classList.toggle('open');
+    }
+}
+
+function initNavbar() {
+    document.addEventListener('click', (e) => {
+        const dropdownParent = document.getElementById('dropdownParent');
+        if (dropdownParent && dropdownParent.classList.contains('open')) {
+            if (!dropdownParent.contains(e.target)) {
+                dropdownParent.classList.remove('open');
+            }
+        }
+    });
 }
 
 // === 初始化 ===
 document.addEventListener('DOMContentLoaded', () => {
-    initSidebar();
+    initNavbar();
     updateScheduleInfo();
     syncScrapeButtonState();
 

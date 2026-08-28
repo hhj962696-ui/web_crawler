@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}追蹤案件 — 採購爬蟲系統{% endblock %}
-{% block page_title %}追蹤案件{% endblock %}
+{% block title %}追蹤案件時間軸 — 採購爬蟲系統{% endblock %}
+{% block page_title %}追蹤案件時間軸{% endblock %}
 
 {% block content %}
-<!-- 追蹤統計 -->
+<!-- 追蹤統計與頂部狀態 -->
 <div class="stats-grid stats-grid-small">
     <div class="stat-card">
         <div class="stat-icon">⭐</div>
         <div class="stat-info">
             <span class="stat-value">{{ tracked_tenders | length }}</span>
-            <span class="stat-label">追蹤中</span>
+            <span class="stat-label">追蹤中案件</span>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon">🔄</div>
         <div class="stat-info">
             <span class="stat-value">{{ status_changed_count }}</span>
-            <span class="stat-label">狀態變更</span>
+            <span class="stat-label">已有招標/狀態進展</span>
         </div>
     </div>
 </div>
@@ -26,15 +26,16 @@
 <div class="action-bar glass-card">
     <button class="btn btn-secondary" onclick="manualCheckTracked()">
         <span class="btn-icon">🔄</span>
-        <span>立即檢查狀態</span>
+        <span>立即檢查狀態演進</span>
     </button>
 </div>
 
-<!-- 追蹤案件列表 -->
-<div class="tender-list" id="trackedList">
+<!-- 追蹤案件時間軸列表 -->
+<div class="timeline-container" id="trackedTimeline">
     {% for tender in tracked_tenders %}
-    <div class="tender-card glass-card tracked-card" data-id="{{ tender.id }}">
-        <div class="tender-header">
+    <div class="timeline-item-card glass-card tracked-card" data-id="{{ tender.id }}">
+        <!-- 時間軸標頭區 -->
+        <div class="timeline-item-header">
             <div class="tender-title-row">
                 <h3 class="tender-name">
                     {% if tender.tender_url %}
@@ -55,42 +56,69 @@
                             aria-label="取消追蹤">★</button>
                 </div>
             </div>
-            <span class="tender-status status-{{ tender.status | replace(' ', '-') }}">{{ tender.status }}</span>
         </div>
 
-        <div class="tender-details">
-            <div class="detail-item">
-                <span class="detail-label">📌 案號</span>
-                <span class="detail-value">{{ tender.tender_id }}</span>
+        <!-- 縱向時間軸階段節點區塊 -->
+        <div class="timeline-nodes-flow">
+            <!-- 節點 1：公開徵求階段 -->
+            <div class="timeline-node node-solicitation">
+                <div class="node-icon-dot">📌</div>
+                <div class="node-content-box">
+                    <div class="node-header-row">
+                        <span class="node-title">公開徵求階段</span>
+                        <span class="node-date">{{ tender.scraped_at or tender.created_at }}</span>
+                        <span class="tender-status status-公開徵求">公開徵求</span>
+                    </div>
+                    <div class="node-body-details">
+                        <div class="detail-tag">📌 案號: <strong>{{ tender.tender_id }}</strong></div>
+                        <div class="detail-tag">🏢 機關: <strong>{{ tender.org_name or '未載明' }}</strong></div>
+                        <div class="detail-tag">👤 承辦人: {{ tender.contact_person or '未提供' }}</div>
+                        <div class="detail-tag">📞 電話: {{ tender.phone or '未提供' }}</div>
+                        <div class="detail-tag">💰 預算: <span class="budget">{{ tender.budget or '未公告' }}</span></div>
+                        <div class="detail-tag">💵 押標金: {{ tender.bid_bond or '無' }}</div>
+                    </div>
+                </div>
             </div>
-            <div class="detail-item">
-                <span class="detail-label">🏢 機關</span>
-                <span class="detail-value">{{ tender.org_name or 'N/A' }}</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">👤 承辦人</span>
-                <span class="detail-value">{{ tender.contact_person or 'N/A' }}</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">📞 電話</span>
-                <span class="detail-value">{{ tender.phone or 'N/A' }}</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">💰 預算</span>
-                <span class="detail-value budget">{{ tender.budget or '未公告' }}</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">💵 押標金</span>
-                <span class="detail-value">{{ tender.bid_bond or '無' }}</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">🕐 更新時間</span>
-                <span class="detail-value">{{ tender.updated_at }}</span>
+
+            <!-- 時間軸連接線 -->
+            <div class="timeline-connector-line"></div>
+
+            <!-- 節點 2：公開招標與截止日期階段 -->
+            <div class="timeline-node node-bidding {% if tender.bidding_info %}active-bidding{% else %}pending-bidding{% endif %}">
+                <div class="node-icon-dot">{% if tender.bidding_info %}📢{% else %}⏳{% endif %}</div>
+                <div class="node-content-box">
+                    {% if tender.bidding_info %}
+                    <div class="node-header-row">
+                        <span class="node-title">公開招標與截止投標</span>
+                        <span class="node-date">更新於: {{ tender.bidding_info.scraped_at }}</span>
+                        <span class="tender-status status-{{ tender.bidding_info.status | replace(' ', '-') }}">{{ tender.bidding_info.status }}</span>
+                    </div>
+                    <div class="node-body-details">
+                        <div class="detail-tag highlight-tag">⏰ 截止投標/開標日期: <strong>{{ tender.bidding_info.bid_deadline or '依公告為準' }}</strong></div>
+                        <div class="detail-tag">📋 招標方式: {{ tender.bidding_info.tender_way or '未公告' }}</div>
+                        <div class="detail-tag">📦 採購類別: {{ tender.bidding_info.proctrg_cate or '未公告' }}</div>
+                        {% if tender.bidding_info.tender_url %}
+                        <div class="detail-tag"><a href="{{ tender.bidding_info.tender_url }}" target="_blank" rel="noopener" style="color:#3498db;text-decoration:underline;">🔗 開啟公開招標公告</a></div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="node-header-row">
+                        <span class="node-title">公開招標進程</span>
+                        <span class="node-date">預測/監控中</span>
+                        <span class="badge" style="background:rgba(245, 158, 11, 0.2);color:#fbbf24;border:1px solid rgba(245, 158, 11, 0.4);">持續監控中</span>
+                    </div>
+                    <div class="node-body-details">
+                        <p style="color:#8b95a8; font-size: 13px; margin: 4px 0;">
+                            目前該案件尚在「公開徵求」階段，系統會定時自動探測政府採購網，一旦釋出「公開招標」公告將自動升級時間軸進程！
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
 
-        <!-- 備註區塊 -->
-        <div class="note-section">
+        <!-- 追蹤備註區塊 -->
+        <div class="note-section" style="margin-top: 1.2rem; padding-top: 1rem; border-top: 1px dashed rgba(255,255,255,0.08);">
             <div class="note-header">
                 <span class="note-label">📝 追蹤備註</span>
                 <button class="btn btn-small btn-ghost" onclick="toggleNoteEdit({{ tender.id }})">編輯</button>
@@ -113,7 +141,7 @@
     <div class="empty-state">
         <div class="empty-icon">⭐</div>
         <h3>尚無追蹤案件</h3>
-        <p>前往「全部案件」頁面，點擊 ☆ 圖示將案件加入追蹤</p>
+        <p>前往「公開徵求」或「公開招標」頁面，點擊 ☆ 圖示將案件加入追蹤</p>
     </div>
     {% endif %}
 </div>

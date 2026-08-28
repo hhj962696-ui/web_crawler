@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="header-container">
-    <h2>📇 企業通訊錄</h2>
+    <h2 id="pageTitle">📇 企業通訊錄</h2>
     <div class="actions">
         <button class="btn btn-secondary" onclick="exportCSV()">📋 匯出 CSV</button>
         <button class="btn btn-primary" onclick="exportVCardAll()" style="background: linear-gradient(135deg, #8e44ad, #9b59b6);">📱 匯出全部 vCard</button>
@@ -10,10 +10,20 @@
     </div>
 </div>
 
+<!-- 分頁頁籤 (Tabs) -->
+<div class="tabs-container" style="display: flex; gap: 10px; margin-bottom: 1.5rem;">
+    <button class="btn" id="tabOrg" onclick="switchTab('org')" style="background: var(--gradient-primary); color: white; padding: 10px 20px; font-weight: 600; border-radius: 8px;">
+        🏛️ 機關通訊錄
+    </button>
+    <button class="btn" id="tabVendor" onclick="switchTab('vendor')" style="background: var(--bg-glass-hover); color: var(--text-secondary); border: 1px solid var(--border-color); padding: 10px 20px; font-weight: 600; border-radius: 8px;">
+        🏭 原廠通訊錄
+    </button>
+</div>
+
 <div class="card">
     <div class="table-responsive">
         <table class="table" id="contactsTable">
-            <thead>
+            <thead id="contactsThead">
                 <tr>
                     <th>機關/公司名稱</th>
                     <th>聯絡人</th>
@@ -29,6 +39,7 @@
             </tbody>
         </table>
     </div>
+    <div class="pagination" id="contactsPagination" style="margin-top: 1rem; padding-bottom: 0;"></div>
 </div>
 
 <!-- 聯絡人編輯 Modal -->
@@ -39,20 +50,24 @@
         
         <form id="contactForm" onsubmit="saveContact(event)">
             <input type="hidden" id="contactId">
+            <input type="hidden" id="cContactType" value="org">
+            
             <div class="form-group">
-                <label class="form-label">機關名稱 (必填)</label>
-                <input type="text" id="cOrgName" class="input" required>
+                <label class="form-label" id="lblOrgName">機關/公司名稱 (必填)</label>
+                <input type="text" id="cOrgName" class="input" required placeholder="例如: XX原廠 / 台北市政府">
             </div>
+            
             <div style="display: flex; gap: 1rem;">
                 <div class="form-group" style="flex:1;">
-                    <label class="form-label">聯絡人姓名 (必填)</label>
+                    <label class="form-label" id="lblContactName">聯絡人姓名 (必填)</label>
                     <input type="text" id="cName" class="input" required>
                 </div>
                 <div class="form-group" style="flex:1;">
                     <label class="form-label">職稱</label>
-                    <input type="text" id="cTitle" class="input">
+                    <input type="text" id="cTitle" class="input" placeholder="例如: 業務經理 / FAE">
                 </div>
             </div>
+            
             <div style="display: flex; gap: 1rem;">
                 <div class="form-group" style="flex:1;">
                     <label class="form-label">辦公室電話</label>
@@ -63,10 +78,22 @@
                     <input type="text" id="cMobile" class="input">
                 </div>
             </div>
+            
             <div class="form-group">
                 <label class="form-label">Email</label>
                 <input type="email" id="cEmail" class="input">
             </div>
+
+            <div class="form-group">
+                <label class="form-label">聯絡地址</label>
+                <input type="text" id="cAddress" class="input" placeholder="例如: 台北市信義區信義路五段...">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">分類標籤</label>
+                <input type="text" id="cTags" class="input" placeholder="例如: 防火牆原廠, 代理商, 關鍵客戶">
+            </div>
+            
             <div class="form-group">
                 <label class="form-label">備註</label>
                 <textarea id="cNotes" class="input" rows="2"></textarea>
@@ -91,11 +118,14 @@
 </div>
 
 <script>
+let currentTab = 'org'; // 'org' | 'vendor'
 let currentContacts = [];
+let currentPage = 1;
+const pageSize = 5;
 
 async function loadContacts() {
     try {
-        const resp = await fetch('/api/contacts');
+        const resp = await fetch(`/api/contacts?type=${currentTab}`);
         const data = await resp.json();
         currentContacts = data.contacts || [];
         renderContacts();
@@ -104,21 +134,97 @@ async function loadContacts() {
     }
 }
 
+function switchTab(tab) {
+    currentTab = tab;
+    currentPage = 1;
+    
+    const btnOrg = document.getElementById('tabOrg');
+    const btnVendor = document.getElementById('tabVendor');
+    const pageTitle = document.getElementById('pageTitle');
+    const thead = document.getElementById('contactsThead');
+    
+    if (tab === 'org') {
+        btnOrg.style.background = 'var(--gradient-primary)';
+        btnOrg.style.color = 'white';
+        btnOrg.style.border = 'none';
+        
+        btnVendor.style.background = 'var(--bg-glass-hover)';
+        btnVendor.style.color = 'var(--text-secondary)';
+        btnVendor.style.border = '1px solid var(--border-color)';
+        
+        pageTitle.textContent = '📇 企業通訊錄';
+        thead.innerHTML = `
+            <tr>
+                <th>機關/公司名稱</th>
+                <th>聯絡人</th>
+                <th>職稱</th>
+                <th>電話</th>
+                <th>手機</th>
+                <th>來源案號</th>
+                <th>操作</th>
+            </tr>
+        `;
+    } else {
+        btnVendor.style.background = 'var(--gradient-primary)';
+        btnVendor.style.color = 'white';
+        btnVendor.style.border = 'none';
+        
+        btnOrg.style.background = 'var(--bg-glass-hover)';
+        btnOrg.style.color = 'var(--text-secondary)';
+        btnOrg.style.border = '1px solid var(--border-color)';
+        
+        pageTitle.textContent = '🏭 原廠與業務通訊錄';
+        thead.innerHTML = `
+            <tr>
+                <th>原廠/公司名稱</th>
+                <th>聯絡業務</th>
+                <th>職稱</th>
+                <th>電話</th>
+                <th>手機</th>
+                <th>聯絡地址</th>
+                <th>操作</th>
+            </tr>
+        `;
+    }
+    
+    loadContacts();
+}
+
+function changePage(page) {
+    currentPage = page;
+    renderContacts();
+}
+
 function renderContacts() {
     const tbody = document.getElementById('contactsList');
     if (!currentContacts.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">目前無聯絡人資料</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">目前無${currentTab === 'vendor' ? '原廠' : '企業'}聯絡人資料</td></tr>`;
+        renderPagination(0);
         return;
     }
     
-    tbody.innerHTML = currentContacts.map(c => `
+    const totalPages = Math.ceil(currentContacts.length / pageSize) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    
+    const start = (currentPage - 1) * pageSize;
+    const pageContacts = currentContacts.slice(start, start + pageSize);
+    
+    tbody.innerHTML = pageContacts.map(c => `
         <tr>
-            <td><strong>${c.org_name}</strong></td>
-            <td>${c.contact_name}</td>
+            <td>
+                <strong>${c.org_name}</strong>
+                ${c.tags ? `<br><span class="badge" style="background:rgba(59, 130, 246, 0.2);color:#60a5fa;font-size:10px;margin-top:2px;">${c.tags}</span>` : ''}
+            </td>
+            <td>${c.contact_name || '-'}</td>
             <td><span class="badge" style="background:#34495e;">${c.title || '-'}</span></td>
             <td>${c.phone || '-'}</td>
             <td>${c.mobile || '-'}</td>
-            <td>${c.source_tender_id ? `<a href="/?search=${c.source_tender_id}" style="color:#3498db;text-decoration:none;">${c.source_tender_id}</a>` : '-'}</td>
+            <td>${
+                currentTab === 'org' 
+                    ? (c.source_tender_id ? `<a href="/?search=${c.source_tender_id}" style="color:#3498db;text-decoration:none;">${c.source_tender_id}</a>` : '-')
+                    : (c.address || '-')
+            }</td>
             <td>
                 <button class="btn btn-sm btn-primary" onclick="showQRCode(${c.id})" title="顯示 QR Code">📱</button>
                 <button class="btn btn-sm btn-secondary" onclick="editContact(${c.id})">編輯</button>
@@ -126,12 +232,69 @@ function renderContacts() {
             </td>
         </tr>
     `).join('');
+    
+    renderPagination(currentContacts.length);
+}
+
+function renderPagination(totalItems) {
+    const paginationEl = document.getElementById('contactsPagination');
+    if (!paginationEl) return;
+    
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+    if (totalPages <= 1) {
+        paginationEl.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    
+    // 上一頁
+    if (currentPage > 1) {
+        html += `<button class="page-btn" onclick="changePage(${currentPage - 1})">← 上一頁</button>`;
+    } else {
+        html += `<button class="page-btn" disabled style="opacity:0.5;cursor:not-allowed;">← 上一頁</button>`;
+    }
+    
+    // 頁碼
+    for (let p = 1; p <= totalPages; p++) {
+        if (p === 1 || p === totalPages || (p >= currentPage - 2 && p <= currentPage + 2)) {
+            if (p === currentPage) {
+                html += `<span class="page-btn active">${p}</span>`;
+            } else {
+                html += `<button class="page-btn" onclick="changePage(${p})">${p}</button>`;
+            }
+        } else if (p === 2 && currentPage - 2 > 2) {
+            html += `<span class="page-dots">...</span>`;
+        } else if (p === totalPages - 1 && currentPage + 2 < totalPages - 1) {
+            html += `<span class="page-dots">...</span>`;
+        }
+    }
+    
+    // 下一頁
+    if (currentPage < totalPages) {
+        html += `<button class="page-btn" onclick="changePage(${currentPage + 1})">下一頁 →</button>`;
+    } else {
+        html += `<button class="page-btn" disabled style="opacity:0.5;cursor:not-allowed;">下一頁 →</button>`;
+    }
+    
+    paginationEl.innerHTML = html;
 }
 
 function openContactModal() {
     document.getElementById('contactForm').reset();
     document.getElementById('contactId').value = '';
-    document.getElementById('modalTitle').textContent = '新增聯絡人';
+    document.getElementById('cContactType').value = currentTab;
+    
+    if (currentTab === 'vendor') {
+        document.getElementById('modalTitle').textContent = '新增原廠/業務聯絡人';
+        document.getElementById('lblOrgName').textContent = '原廠/公司名稱 (必填)';
+        document.getElementById('lblContactName').textContent = '業務/聯絡人姓名 (必填)';
+    } else {
+        document.getElementById('modalTitle').textContent = '新增機關聯絡人';
+        document.getElementById('lblOrgName').textContent = '機關/公司名稱 (必填)';
+        document.getElementById('lblContactName').textContent = '聯絡人姓名 (必填)';
+    }
+    
     document.getElementById('contactModal').style.display = 'flex';
 }
 
@@ -144,15 +307,27 @@ function editContact(id) {
     if (!c) return;
     
     document.getElementById('contactId').value = c.id;
-    document.getElementById('cOrgName').value = c.org_name;
-    document.getElementById('cName').value = c.contact_name;
+    document.getElementById('cContactType').value = c.contact_type || currentTab;
+    document.getElementById('cOrgName').value = c.org_name || '';
+    document.getElementById('cName').value = c.contact_name || '';
     document.getElementById('cTitle').value = c.title || '';
     document.getElementById('cPhone').value = c.phone || '';
     document.getElementById('cMobile').value = c.mobile || '';
     document.getElementById('cEmail').value = c.email || '';
+    document.getElementById('cAddress').value = c.address || '';
+    document.getElementById('cTags').value = c.tags || '';
     document.getElementById('cNotes').value = c.notes || '';
     
-    document.getElementById('modalTitle').textContent = '編輯聯絡人';
+    if (c.contact_type === 'vendor') {
+        document.getElementById('modalTitle').textContent = '編輯原廠/業務聯絡人';
+        document.getElementById('lblOrgName').textContent = '原廠/公司名稱 (必填)';
+        document.getElementById('lblContactName').textContent = '業務/聯絡人姓名 (必填)';
+    } else {
+        document.getElementById('modalTitle').textContent = '編輯機關聯絡人';
+        document.getElementById('lblOrgName').textContent = '機關/公司名稱 (必填)';
+        document.getElementById('lblContactName').textContent = '聯絡人姓名 (必填)';
+    }
+    
     document.getElementById('contactModal').style.display = 'flex';
 }
 
@@ -166,7 +341,10 @@ async function saveContact(e) {
         phone: document.getElementById('cPhone').value,
         mobile: document.getElementById('cMobile').value,
         email: document.getElementById('cEmail').value,
-        notes: document.getElementById('cNotes').value
+        address: document.getElementById('cAddress').value,
+        tags: document.getElementById('cTags').value,
+        notes: document.getElementById('cNotes').value,
+        contact_type: document.getElementById('cContactType').value || currentTab
     };
     
     const url = id ? `/api/contacts/${id}` : '/api/contacts';
@@ -207,11 +385,11 @@ async function deleteContact(id) {
 }
 
 function exportCSV() {
-    window.location.href = '/api/contacts/export-csv';
+    window.location.href = `/api/contacts/export-csv?type=${currentTab}`;
 }
 
 function exportVCardAll() {
-    window.location.href = '/api/contacts/export-vcard';
+    window.location.href = `/api/contacts/export-vcard?type=${currentTab}`;
 }
 
 function showQRCode(id) {
@@ -234,6 +412,14 @@ window.onclick = function(event) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', loadContacts);
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const typeParam = urlParams.get('type');
+    if (typeParam === 'vendor') {
+        switchTab('vendor');
+    } else {
+        loadContacts();
+    }
+});
 </script>
 {% endblock %}
